@@ -1,0 +1,32 @@
+# Maven
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+.project
+.classpath
+.settings/
+
+# Vaadin / Node
+node_modules/
+frontend/generated/
+src/main/frontend/generated/
+package-lock.json
+pnpm-lock.yaml
+tsconfig.json
+types.d.ts
+vite.generated.ts
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+
+# Claude Code
+.claude/
+.mcp.json
