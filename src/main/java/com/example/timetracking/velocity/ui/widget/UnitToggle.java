@@ -28,6 +28,10 @@ public class UnitToggle extends Tabs {
         };
 
         public abstract String format(long seconds);
+
+        public String formatPerWeek(long secondsPerWeek) {
+            return format(secondsPerWeek) + "/week";
+        }
     }
 
     private final Tab manDaysTab = new Tab("MD");

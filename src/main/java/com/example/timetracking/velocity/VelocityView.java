@@ -11,7 +11,6 @@ import com.example.timetracking.milestone.ui.widget.IssueSubRow;
 import com.example.timetracking.velocity.application.dto.MilestoneVelocity;
 import com.example.timetracking.velocity.application.dto.PersonVelocity;
 import com.example.timetracking.velocity.application.dto.VelocityReport;
-import com.example.timetracking.velocity.application.dto.WeekVelocity;
 import com.example.timetracking.velocity.application.usecase.ComputeVelocityUseCase;
 import com.example.timetracking.velocity.ui.widget.UnitToggle;
 import com.example.timetracking.views.MainLayout;
@@ -34,8 +33,11 @@ import com.vaadin.flow.component.tabs.Tabs;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @Route(value = "velocity", layout = MainLayout.class)
@@ -157,8 +159,32 @@ public class VelocityView extends VerticalLayout {
 
         card.add(summaryRow("Milestones", String.valueOf(report.milestones().size())));
         card.add(summaryRow("Total logged", unit.format(report.totalSeconds())));
-        card.add(summaryRow("Average per milestone", unit.format(report.avgSecondsPerMilestone())));
+        card.add(velocityRow(unit.formatPerWeek(report.teamAvgSecondsPerWeek())));
         return card;
+    }
+
+    /** Headline row: the team's weekly velocity, visually dominant over the other summary rows. */
+    private Div velocityRow(String value) {
+        Span labelSpan = new Span("Team velocity");
+        labelSpan.getStyle().set("font-size", "13px").set("font-weight", "600").set("color", DashboardStyle.INK);
+
+        Span valueSpan = new Span(value);
+        valueSpan.getStyle()
+                .set("font-size", "16px")
+                .set("font-weight", "600")
+                .set("color", DashboardStyle.PRIMARY_900)
+                .set("text-align", "right");
+
+        Div row = new Div(labelSpan, valueSpan);
+        row.getStyle()
+                .set("display", "flex")
+                .set("justify-content", "space-between")
+                .set("align-items", "baseline")
+                .set("width", "100%")
+                .set("padding", "6px 0 3px 0")
+                .set("margin-top", "4px")
+                .set("border-top", "1px solid #E5E8EA");
+        return row;
     }
 
     private Div summaryRow(String label, String value) {
@@ -186,10 +212,9 @@ public class VelocityView extends VerticalLayout {
         H4 header = new H4("Velocity");
         header.getStyle().set("margin", "0 0 12px 0").set("color", DashboardStyle.EPIC).set("font-weight", "600");
 
-        Tab weeksTab = new Tab("Per week");
+        Tab teamTab = new Tab("Team velocity");
         Tab personsTab = new Tab("Per person");
-        Tab milestonesTab = new Tab("Per milestone");
-        Tabs tabs = new Tabs(weeksTab, personsTab, milestonesTab);
+        Tabs tabs = new Tabs(teamTab, personsTab);
         tabs.setWidthFull();
 
         Div contentHolder = new Div();
@@ -203,11 +228,10 @@ public class VelocityView extends VerticalLayout {
                 .set("margin-top", "12px");
 
         Map<Tab, Component> viewsByTab = Map.of(
-                weeksTab, weeksTabContent(unit),
-                personsTab, personsTabContent(unit),
-                milestonesTab, milestonesTabContent(unit));
+                teamTab, teamTabContent(unit),
+                personsTab, personsTabContent(unit));
 
-        contentHolder.add(viewsByTab.get(weeksTab));
+        contentHolder.add(viewsByTab.get(teamTab));
         tabs.addSelectedChangeListener(event -> {
             Component selected = viewsByTab.get(event.getSelectedTab());
             contentHolder.removeAll();
@@ -220,72 +244,9 @@ public class VelocityView extends VerticalLayout {
         return card;
     }
 
-    // ── per-week tab: team total per relative milestone week ───────────────────
+    // ── team velocity tab: one weekly chart per milestone ──────────────────────
 
-    private Component weeksTabContent(UnitToggle.Unit unit) {
-        Div wrapper = new Div();
-        wrapper.setWidthFull();
-        if (report.teamPerWeek().isEmpty()) {
-            wrapper.add(DashboardStyle.note("No worklogs recorded."));
-            return wrapper;
-        }
-        long maxWeek = report.teamPerWeek().stream().mapToLong(WeekVelocity::totalSeconds).max().orElse(1L);
-        Map<String, String> milestoneNames = milestoneNames();
-
-        for (WeekVelocity week : report.teamPerWeek()) {
-            DetailsRow header = new DetailsRow(
-                    "Week " + week.weekNumber(),
-                    percent(week.totalSeconds(), maxWeek),
-                    unit.format(week.totalSeconds()),
-                    DashboardStyle.MILESTONE);
-
-            VerticalLayout body = subRows();
-            week.secondsByMilestone().forEach((key, seconds) -> body.add(new IssueSubRow(
-                    label(key, milestoneNames.get(key)),
-                    percent(seconds, week.totalSeconds()),
-                    unit.format(seconds),
-                    DashboardStyle.SPENT)));
-
-            wrapper.add(new CollapsibleSection(header, body));
-        }
-        return wrapper;
-    }
-
-    // ── per-person tab: average per milestone, expandable breakdown ────────────
-
-    private Component personsTabContent(UnitToggle.Unit unit) {
-        Div wrapper = new Div();
-        wrapper.setWidthFull();
-        if (report.perPerson().isEmpty()) {
-            wrapper.add(DashboardStyle.note("No contributors to display."));
-            return wrapper;
-        }
-        long maxTotal = report.perPerson().stream().mapToLong(PersonVelocity::totalSeconds).max().orElse(1L);
-        Map<String, String> milestoneNames = milestoneNames();
-
-        for (PersonVelocity person : report.perPerson()) {
-            DetailsRow header = new DetailsRow(
-                    person.name(),
-                    percent(person.totalSeconds(), maxTotal),
-                    unit.format(person.avgSecondsPerMilestone()) + " avg",
-                    DashboardStyle.SPENT);
-
-            VerticalLayout body = subRows();
-            body.add(DashboardStyle.note("Total: " + unit.format(person.totalSeconds())));
-            person.secondsByMilestone().forEach((key, seconds) -> body.add(new IssueSubRow(
-                    label(key, milestoneNames.get(key)),
-                    percent(seconds, person.totalSeconds()),
-                    unit.format(seconds),
-                    DashboardStyle.SPENT)));
-
-            wrapper.add(new CollapsibleSection(header, body));
-        }
-        return wrapper;
-    }
-
-    // ── per-milestone tab: total + per-week rate, expandable weekly detail ─────
-
-    private Component milestonesTabContent(UnitToggle.Unit unit) {
+    private Component teamTabContent(UnitToggle.Unit unit) {
         Div wrapper = new Div();
         wrapper.setWidthFull();
         if (report.milestones().isEmpty()) {
@@ -295,19 +256,68 @@ public class VelocityView extends VerticalLayout {
         long maxTotal = report.milestones().stream().mapToLong(MilestoneVelocity::totalSpentSeconds).max().orElse(1L);
 
         for (MilestoneVelocity milestone : report.milestones()) {
-            DetailsRow header = new DetailsRow(
+            DetailsRow header = wide(new DetailsRow(
                     label(milestone.key(), milestone.name()),
                     percent(milestone.totalSpentSeconds(), maxTotal),
-                    unit.format(milestone.totalSpentSeconds()) + " · " + unit.format(milestone.secondsPerWeek()) + "/week",
-                    DashboardStyle.EPIC);
+                    unit.format(milestone.totalSpentSeconds()) + " · " + unit.formatPerWeek(milestone.avgSecondsPerWeek()),
+                    DashboardStyle.MILESTONE));
 
             VerticalLayout body = subRows();
-            body.add(DashboardStyle.note(milestone.durationWeeks() + " week(s)"));
-            milestone.secondsByWeek().forEach((week, seconds) -> body.add(new IssueSubRow(
-                    "Week " + week,
-                    percent(seconds, milestone.totalSpentSeconds()),
-                    unit.format(seconds),
-                    DashboardStyle.SPENT)));
+            body.add(DashboardStyle.note(startNote(milestone)));
+            long maxWeekSeconds = milestone.secondsByWeek().values().stream().mapToLong(Long::longValue).max().orElse(1L);
+            for (int week = 1; week <= milestone.observedWeeks(); week++) {
+                long seconds = milestone.secondsByWeek().getOrDefault(week, 0L);
+                body.add(wide(new IssueSubRow(
+                        weekLabel(week, milestone.startDate()),
+                        percent(seconds, maxWeekSeconds),
+                        unit.format(seconds),
+                        DashboardStyle.SPENT)));
+            }
+
+            wrapper.add(new CollapsibleSection(header, body, true));
+        }
+        return wrapper;
+    }
+
+    // ── per-person tab: weekly velocity per contributor ────────────────────────
+
+    private Component personsTabContent(UnitToggle.Unit unit) {
+        Div wrapper = new Div();
+        wrapper.setWidthFull();
+        if (report.perPerson().isEmpty()) {
+            wrapper.add(DashboardStyle.note("No contributors to display."));
+            return wrapper;
+        }
+        long maxTotal = report.perPerson().stream().mapToLong(PersonVelocity::totalSeconds).max().orElse(1L);
+        LocalDate singleStart = report.milestones().size() == 1 ? report.milestones().get(0).startDate() : null;
+        Map<String, String> milestoneNames = milestoneNames();
+
+        for (PersonVelocity person : report.perPerson()) {
+            DetailsRow header = wide(new DetailsRow(
+                    person.name(),
+                    percent(person.totalSeconds(), maxTotal),
+                    unit.formatPerWeek(person.avgSecondsPerWeek()),
+                    DashboardStyle.SPENT));
+
+            VerticalLayout body = subRows();
+            body.add(DashboardStyle.note("Total: " + unit.format(person.totalSeconds())));
+            long maxWeekSeconds = person.secondsByWeek().values().stream().mapToLong(Long::longValue).max().orElse(1L);
+            for (int week = 1; week <= person.observedWeeks(); week++) {
+                long seconds = person.secondsByWeek().getOrDefault(week, 0L);
+                body.add(wide(new IssueSubRow(
+                        weekLabel(week, singleStart),
+                        percent(seconds, maxWeekSeconds),
+                        unit.format(seconds),
+                        DashboardStyle.SPENT)));
+            }
+            if (report.milestones().size() > 1) {
+                body.add(DashboardStyle.note("By milestone"));
+                person.secondsByMilestone().forEach((key, seconds) -> body.add(wide(new IssueSubRow(
+                        label(key, milestoneNames.get(key)),
+                        percent(seconds, person.totalSeconds()),
+                        unit.format(seconds),
+                        DashboardStyle.EPIC))));
+            }
 
             wrapper.add(new CollapsibleSection(header, body));
         }
@@ -315,6 +325,35 @@ public class VelocityView extends VerticalLayout {
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────────
+
+    private static final DateTimeFormatter WEEK_DATE = DateTimeFormatter.ofPattern("MMM d", Locale.US);
+    private static final DateTimeFormatter START_DATE = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US);
+
+    /**
+     * Widens the value column of a {@link DetailsRow}/{@link IssueSubRow} grid so combined
+     * values like "10.0 MD · 2.5 MD/week" fit. Applied to every row in a section, headers
+     * and sub-rows alike, so the bar columns stay vertically aligned.
+     */
+    private <T extends Div> T wide(T row) {
+        row.getStyle().set("grid-template-columns", "1fr 160px 175px");
+        return row;
+    }
+
+    /** Week label with its real date range when the milestone start is known, e.g. "Week 1 (Jul 6 – Jul 12)". */
+    private String weekLabel(int week, LocalDate start) {
+        if (start == null) {
+            return "Week " + week;
+        }
+        LocalDate from = start.plusDays(7L * (week - 1));
+        return "Week " + week + " (" + WEEK_DATE.format(from) + " – " + WEEK_DATE.format(from.plusDays(6)) + ")";
+    }
+
+    private String startNote(MilestoneVelocity milestone) {
+        String planned = "planned " + milestone.durationWeeks() + " week(s)";
+        return milestone.startDate() != null
+                ? "Started " + START_DATE.format(milestone.startDate()) + " · " + planned
+                : planned;
+    }
 
     private Div card() {
         Div card = new Div();

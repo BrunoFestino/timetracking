@@ -6,7 +6,6 @@ import com.example.timetracking.milestone.domain.Worklog;
 import com.example.timetracking.velocity.application.dto.MilestoneVelocity;
 import com.example.timetracking.velocity.application.dto.PersonVelocity;
 import com.example.timetracking.velocity.application.dto.VelocityReport;
-import com.example.timetracking.velocity.application.dto.WeekVelocity;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -21,7 +20,7 @@ import java.util.TreeMap;
 
 /**
  * Turns a set of {@link JiraTicket} milestone trees into the {@link VelocityReport} model:
- * team totals, per relative-week throughput and per-person averages.
+ * per-milestone and per-person weekly velocity (average logged effort per week).
  *
  * <p>Weeks are relative to each milestone's start (week 1 = start), so the ramp-up of
  * different milestones can be compared side by side.
@@ -31,11 +30,11 @@ public class VelocityAggregator {
 
     public VelocityReport aggregate(List<JiraTicket> milestones) {
         List<MilestoneVelocity> perMilestone = new ArrayList<>();
-        Map<Integer, Long> weekTotals = new TreeMap<>();
-        Map<Integer, Map<String, Long>> weekByMilestone = new TreeMap<>();
         Map<String, Long> personTotals = new LinkedHashMap<>();
         Map<String, Map<String, Long>> personByMilestone = new LinkedHashMap<>();
+        Map<String, Map<Integer, Long>> personByWeek = new LinkedHashMap<>();
         long totalSeconds = 0;
+        int teamObservedWeeks = 0;
 
         for (JiraTicket milestone : milestones) {
             List<Worklog> worklogs = new ArrayList<>();
@@ -51,12 +50,12 @@ public class VelocityAggregator {
 
                 milestoneTotal += seconds;
                 secondsByWeek.merge(week, seconds, Long::sum);
-                weekTotals.merge(week, seconds, Long::sum);
-                weekByMilestone.computeIfAbsent(week, k -> new LinkedHashMap<>())
-                        .merge(milestone.key(), seconds, Long::sum);
                 personTotals.merge(author, seconds, Long::sum);
                 personByMilestone.computeIfAbsent(author, k -> new LinkedHashMap<>())
                         .merge(milestone.key(), seconds, Long::sum);
+                personByWeek.computeIfAbsent(author, k -> new TreeMap<>())
+                        .merge(week, seconds, Long::sum);
+                teamObservedWeeks = Math.max(teamObservedWeeks, week);
             }
             totalSeconds += milestoneTotal;
             perMilestone.add(new MilestoneVelocity(
@@ -64,31 +63,24 @@ public class VelocityAggregator {
                     milestone.summary(),
                     milestoneTotal,
                     durationWeeks(milestone, start, worklogs),
+                    start,
                     secondsByWeek));
         }
 
-        int milestoneCount = milestones.size();
         return new VelocityReport(
                 perMilestone,
                 totalSeconds,
-                milestoneCount > 0 ? totalSeconds / milestoneCount : 0,
-                weeks(weekTotals, weekByMilestone),
-                persons(personTotals, personByMilestone, milestoneCount));
-    }
-
-    private List<WeekVelocity> weeks(Map<Integer, Long> weekTotals, Map<Integer, Map<String, Long>> weekByMilestone) {
-        return weekTotals.entrySet().stream()
-                .map(e -> new WeekVelocity(e.getKey(), e.getValue(),
-                        weekByMilestone.getOrDefault(e.getKey(), Map.of())))
-                .toList();
+                teamObservedWeeks > 0 ? totalSeconds / teamObservedWeeks : 0,
+                persons(personTotals, personByMilestone, personByWeek));
     }
 
     private List<PersonVelocity> persons(Map<String, Long> personTotals,
-                                         Map<String, Map<String, Long>> personByMilestone, int milestoneCount) {
+                                         Map<String, Map<String, Long>> personByMilestone,
+                                         Map<String, Map<Integer, Long>> personByWeek) {
         return personTotals.entrySet().stream()
                 .map(e -> new PersonVelocity(e.getKey(), e.getValue(),
-                        milestoneCount > 0 ? e.getValue() / milestoneCount : e.getValue(),
-                        personByMilestone.getOrDefault(e.getKey(), Map.of())))
+                        personByMilestone.getOrDefault(e.getKey(), Map.of()),
+                        personByWeek.getOrDefault(e.getKey(), Map.of())))
                 .sorted(Comparator.comparingLong(PersonVelocity::totalSeconds).reversed())
                 .toList();
     }
