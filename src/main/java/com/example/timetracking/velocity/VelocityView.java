@@ -5,9 +5,9 @@ import com.example.timetracking.milestone.application.usecase.LoadProjectsUseCas
 import com.example.timetracking.milestone.domain.JiraProject;
 import com.example.timetracking.milestone.domain.JiraTicket;
 import com.example.timetracking.milestone.ui.style.DashboardStyle;
-import com.example.timetracking.milestone.ui.widget.CollapsibleSection;
 import com.example.timetracking.milestone.ui.widget.DetailsRow;
 import com.example.timetracking.milestone.ui.widget.IssueSubRow;
+import com.example.timetracking.velocity.ui.widget.CollapsibleSection;
 import com.example.timetracking.velocity.application.dto.MilestoneVelocity;
 import com.example.timetracking.velocity.application.dto.PersonVelocity;
 import com.example.timetracking.velocity.application.dto.VelocityReport;
