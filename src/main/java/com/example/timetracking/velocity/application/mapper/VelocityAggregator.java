@@ -20,7 +20,8 @@ import java.util.TreeMap;
 
 /**
  * Turns a set of {@link JiraTicket} milestone trees into the {@link VelocityReport} model:
- * per-milestone and per-person weekly velocity (average logged effort per week).
+ * per-milestone and per-person weekly velocity (average logged effort per week), plus
+ * team-level summary figures (peak week, active weeks).
  *
  * <p>Weeks are relative to each milestone's start (week 1 = start), so the ramp-up of
  * different milestones can be compared side by side.
@@ -31,8 +32,8 @@ public class VelocityAggregator {
     public VelocityReport aggregate(List<JiraTicket> milestones) {
         List<MilestoneVelocity> perMilestone = new ArrayList<>();
         Map<String, Long> personTotals = new LinkedHashMap<>();
-        Map<String, Map<String, Long>> personByMilestone = new LinkedHashMap<>();
-        Map<String, Map<Integer, Long>> personByWeek = new LinkedHashMap<>();
+        Map<String, Map<String, Map<Integer, Long>>> personByMilestoneWeek = new LinkedHashMap<>();
+        Map<Integer, Long> teamByWeek = new TreeMap<>();
         long totalSeconds = 0;
         int teamObservedWeeks = 0;
 
@@ -50,10 +51,10 @@ public class VelocityAggregator {
 
                 milestoneTotal += seconds;
                 secondsByWeek.merge(week, seconds, Long::sum);
+                teamByWeek.merge(week, seconds, Long::sum);
                 personTotals.merge(author, seconds, Long::sum);
-                personByMilestone.computeIfAbsent(author, k -> new LinkedHashMap<>())
-                        .merge(milestone.key(), seconds, Long::sum);
-                personByWeek.computeIfAbsent(author, k -> new TreeMap<>())
+                personByMilestoneWeek.computeIfAbsent(author, k -> new LinkedHashMap<>())
+                        .computeIfAbsent(milestone.key(), k -> new TreeMap<>())
                         .merge(week, seconds, Long::sum);
                 teamObservedWeeks = Math.max(teamObservedWeeks, week);
             }
@@ -67,20 +68,25 @@ public class VelocityAggregator {
                     secondsByWeek));
         }
 
+        Map.Entry<Integer, Long> peak = teamByWeek.entrySet().stream()
+                .max(Comparator.comparingLong(Map.Entry::getValue))
+                .orElse(null);
+
         return new VelocityReport(
                 perMilestone,
                 totalSeconds,
                 teamObservedWeeks > 0 ? totalSeconds / teamObservedWeeks : 0,
-                persons(personTotals, personByMilestone, personByWeek));
+                teamObservedWeeks,
+                peak != null ? peak.getKey() : 0,
+                peak != null ? peak.getValue() : 0,
+                persons(personTotals, personByMilestoneWeek));
     }
 
     private List<PersonVelocity> persons(Map<String, Long> personTotals,
-                                         Map<String, Map<String, Long>> personByMilestone,
-                                         Map<String, Map<Integer, Long>> personByWeek) {
+                                         Map<String, Map<String, Map<Integer, Long>>> personByMilestoneWeek) {
         return personTotals.entrySet().stream()
                 .map(e -> new PersonVelocity(e.getKey(), e.getValue(),
-                        personByMilestone.getOrDefault(e.getKey(), Map.of()),
-                        personByWeek.getOrDefault(e.getKey(), Map.of())))
+                        personByMilestoneWeek.getOrDefault(e.getKey(), Map.of())))
                 .sorted(Comparator.comparingLong(PersonVelocity::totalSeconds).reversed())
                 .toList();
     }

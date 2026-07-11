@@ -3,26 +3,41 @@ package com.example.timetracking.velocity.application.dto;
 import java.util.Map;
 
 /**
- * Weekly velocity of one team member across the selected milestones.
+ * Weekly velocity of one team member, broken down by milestone. Each milestone the
+ * person contributed to keeps its own relative-week map (week 1 = that milestone's
+ * start), so weekly rows can be labelled with the milestone's real calendar dates.
  *
- * @param name               contributor display name
- * @param totalSeconds       time logged across all selected milestones
- * @param secondsByMilestone time logged per milestone key
- * @param secondsByWeek      time logged per relative week (week 1 = milestone start)
+ * @param name                 contributor display name
+ * @param totalSeconds         time logged across all selected milestones
+ * @param secondsByMilestoneWeek milestone key → relative week → seconds, in selection order
  */
 public record PersonVelocity(
         String name,
         long totalSeconds,
-        Map<String, Long> secondsByMilestone,
-        Map<Integer, Long> secondsByWeek) {
+        Map<String, Map<Integer, Long>> secondsByMilestoneWeek) {
 
-    /** Highest relative week with logged work (min 1); weeks without logs count as zero. */
-    public int observedWeeks() {
-        return secondsByWeek.keySet().stream().mapToInt(Integer::intValue).max().orElse(1);
+    /** Sum, per milestone, of the highest relative week worked (min 1); gap weeks count as zero. */
+    public int totalActiveWeeks() {
+        int sum = secondsByMilestoneWeek.values().stream()
+                .mapToInt(w -> w.keySet().stream().mapToInt(Integer::intValue).max().orElse(0))
+                .sum();
+        return Math.max(1, sum);
     }
 
-    /** Personal weekly velocity: average of the weekly values over the observed weeks. */
+    /** Personal weekly velocity: average of the weekly values shown for this person. */
     public long avgSecondsPerWeek() {
-        return totalSeconds / observedWeeks();
+        return totalSeconds / totalActiveWeeks();
+    }
+
+    /** Highest relative week the person worked within the given milestone (0 if none). */
+    public int observedWeeksInMilestone(String key) {
+        return secondsByMilestoneWeek.getOrDefault(key, Map.of())
+                .keySet().stream().mapToInt(Integer::intValue).max().orElse(0);
+    }
+
+    /** Total seconds the person logged on the given milestone. */
+    public long milestoneTotal(String key) {
+        return secondsByMilestoneWeek.getOrDefault(key, Map.of())
+                .values().stream().mapToLong(Long::longValue).sum();
     }
 }

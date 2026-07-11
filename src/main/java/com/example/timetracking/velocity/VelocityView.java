@@ -6,7 +6,6 @@ import com.example.timetracking.milestone.domain.JiraProject;
 import com.example.timetracking.milestone.domain.JiraTicket;
 import com.example.timetracking.milestone.ui.style.DashboardStyle;
 import com.example.timetracking.milestone.ui.widget.DetailsRow;
-import com.example.timetracking.milestone.ui.widget.IssueSubRow;
 import com.example.timetracking.velocity.ui.widget.CollapsibleSection;
 import com.example.timetracking.velocity.application.dto.MilestoneVelocity;
 import com.example.timetracking.velocity.application.dto.PersonVelocity;
@@ -158,8 +157,13 @@ public class VelocityView extends VerticalLayout {
         card.add(header);
 
         card.add(summaryRow("Milestones", String.valueOf(report.milestones().size())));
+        card.add(summaryRow("Contributors", String.valueOf(report.contributors())));
         card.add(summaryRow("Total logged", unit.format(report.totalSeconds())));
+        card.add(summaryRow("Active weeks", String.valueOf(report.activeWeeks())));
+        card.add(summaryRow("Peak week",
+                unit.format(report.peakWeekSeconds()) + " (Week " + report.peakWeekNumber() + ")"));
         card.add(velocityRow(unit.formatPerWeek(report.teamAvgSecondsPerWeek())));
+        card.add(summaryRow("Per contributor", unit.formatPerWeek(report.perContributorSecondsPerWeek())));
         return card;
     }
 
@@ -264,14 +268,9 @@ public class VelocityView extends VerticalLayout {
 
             VerticalLayout body = subRows();
             body.add(DashboardStyle.note(startNote(milestone)));
-            long maxWeekSeconds = milestone.secondsByWeek().values().stream().mapToLong(Long::longValue).max().orElse(1L);
             for (int week = 1; week <= milestone.observedWeeks(); week++) {
                 long seconds = milestone.secondsByWeek().getOrDefault(week, 0L);
-                body.add(wide(new IssueSubRow(
-                        weekLabel(week, milestone.startDate()),
-                        percent(seconds, maxWeekSeconds),
-                        unit.format(seconds),
-                        DashboardStyle.SPENT)));
+                body.add(weekRow(weekLabel(week, milestone.startDate()), unit.format(seconds)));
             }
 
             wrapper.add(new CollapsibleSection(header, body, true));
@@ -289,8 +288,8 @@ public class VelocityView extends VerticalLayout {
             return wrapper;
         }
         long maxTotal = report.perPerson().stream().mapToLong(PersonVelocity::totalSeconds).max().orElse(1L);
-        LocalDate singleStart = report.milestones().size() == 1 ? report.milestones().get(0).startDate() : null;
-        Map<String, String> milestoneNames = milestoneNames();
+        Map<String, MilestoneVelocity> byKey = new LinkedHashMap<>();
+        report.milestones().forEach(m -> byKey.put(m.key(), m));
 
         for (PersonVelocity person : report.perPerson()) {
             DetailsRow header = wide(new DetailsRow(
@@ -301,23 +300,16 @@ public class VelocityView extends VerticalLayout {
 
             VerticalLayout body = subRows();
             body.add(DashboardStyle.note("Total: " + unit.format(person.totalSeconds())));
-            long maxWeekSeconds = person.secondsByWeek().values().stream().mapToLong(Long::longValue).max().orElse(1L);
-            for (int week = 1; week <= person.observedWeeks(); week++) {
-                long seconds = person.secondsByWeek().getOrDefault(week, 0L);
-                body.add(wide(new IssueSubRow(
-                        weekLabel(week, singleStart),
-                        percent(seconds, maxWeekSeconds),
-                        unit.format(seconds),
-                        DashboardStyle.SPENT)));
-            }
-            if (report.milestones().size() > 1) {
-                body.add(DashboardStyle.note("By milestone"));
-                person.secondsByMilestone().forEach((key, seconds) -> body.add(wide(new IssueSubRow(
-                        label(key, milestoneNames.get(key)),
-                        percent(seconds, person.totalSeconds()),
-                        unit.format(seconds),
-                        DashboardStyle.EPIC))));
-            }
+            person.secondsByMilestoneWeek().forEach((key, weekMap) -> {
+                MilestoneVelocity mv = byKey.get(key);
+                LocalDate start = mv != null ? mv.startDate() : null;
+                String name = mv != null ? mv.name() : null;
+                body.add(DashboardStyle.note(label(key, name) + " · " + unit.format(person.milestoneTotal(key))));
+                for (int week = 1; week <= person.observedWeeksInMilestone(key); week++) {
+                    long seconds = weekMap.getOrDefault(week, 0L);
+                    body.add(weekRow(weekLabel(week, start), unit.format(seconds)));
+                }
+            });
 
             wrapper.add(new CollapsibleSection(header, body));
         }
@@ -330,9 +322,8 @@ public class VelocityView extends VerticalLayout {
     private static final DateTimeFormatter START_DATE = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US);
 
     /**
-     * Widens the value column of a {@link DetailsRow}/{@link IssueSubRow} grid so combined
-     * values like "10.0 MD · 2.5 MD/week" fit. Applied to every row in a section, headers
-     * and sub-rows alike, so the bar columns stay vertically aligned.
+     * Widens the value column of a {@link DetailsRow} header grid so combined values like
+     * "10.0 MD · 2.5 MD/week" fit without clipping at the card edge.
      */
     private <T extends Div> T wide(T row) {
         row.getStyle().set("grid-template-columns", "1fr 160px 175px");
@@ -377,10 +368,25 @@ public class VelocityView extends VerticalLayout {
         return layout;
     }
 
-    private Map<String, String> milestoneNames() {
-        Map<String, String> names = new LinkedHashMap<>();
-        report.milestones().forEach(m -> names.put(m.key(), m.name()));
-        return names;
+    /** A weekly row without a bar: "Week N (dates)" on the left, the value on the right. */
+    private Div weekRow(String label, String value) {
+        Span labelSpan = new Span(label);
+        labelSpan.getStyle().set("font-size", "13px").set("color", DashboardStyle.INK);
+
+        Span valueSpan = new Span(value);
+        valueSpan.getStyle().set("font-size", "13px").set("color", DashboardStyle.MUTED)
+                .set("text-align", "right").set("white-space", "nowrap");
+
+        Div row = new Div(labelSpan, valueSpan);
+        row.getStyle()
+                .set("display", "flex")
+                .set("justify-content", "space-between")
+                .set("align-items", "baseline")
+                .set("width", "100%")
+                .set("padding", "5px 0 5px 16px")
+                .set("box-sizing", "border-box")
+                .set("border-bottom", "1px solid #F0F2F4");
+        return row;
     }
 
     private String label(String key, String name) {
