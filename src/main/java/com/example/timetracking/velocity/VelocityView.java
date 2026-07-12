@@ -7,6 +7,7 @@ import com.example.timetracking.milestone.domain.JiraTicket;
 import com.example.timetracking.milestone.ui.style.DashboardStyle;
 import com.example.timetracking.milestone.ui.widget.DetailsRow;
 import com.example.timetracking.velocity.ui.widget.CollapsibleSection;
+import com.example.timetracking.velocity.ui.widget.Sparkline;
 import com.example.timetracking.velocity.application.dto.MilestoneVelocity;
 import com.example.timetracking.velocity.application.dto.PersonVelocity;
 import com.example.timetracking.velocity.application.dto.VelocityReport;
@@ -34,6 +35,7 @@ import com.vaadin.flow.router.Route;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -160,8 +162,6 @@ public class VelocityView extends VerticalLayout {
         card.add(summaryRow("Contributors", String.valueOf(report.contributors())));
         card.add(summaryRow("Total logged", unit.format(report.totalSeconds())));
         card.add(summaryRow("Active weeks", String.valueOf(report.activeWeeks())));
-        card.add(summaryRow("Peak week",
-                unit.format(report.peakWeekSeconds()) + " (Week " + report.peakWeekNumber() + ")"));
         card.add(velocityRow(unit.formatPerWeek(report.teamAvgSecondsPerWeek())));
         card.add(summaryRow("Per contributor", unit.formatPerWeek(report.perContributorSecondsPerWeek())));
         return card;
@@ -257,14 +257,9 @@ public class VelocityView extends VerticalLayout {
             wrapper.add(DashboardStyle.note("No milestones selected."));
             return wrapper;
         }
-        long maxTotal = report.milestones().stream().mapToLong(MilestoneVelocity::totalSpentSeconds).max().orElse(1L);
 
         for (MilestoneVelocity milestone : report.milestones()) {
-            DetailsRow header = wide(new DetailsRow(
-                    label(milestone.key(), milestone.name()),
-                    percent(milestone.totalSpentSeconds(), maxTotal),
-                    unit.format(milestone.totalSpentSeconds()) + " · " + unit.formatPerWeek(milestone.avgSecondsPerWeek()),
-                    DashboardStyle.MILESTONE));
+            Div header = milestoneHeader(milestone, unit);
 
             VerticalLayout body = subRows();
             body.add(DashboardStyle.note(startNote(milestone)));
@@ -276,6 +271,46 @@ public class VelocityView extends VerticalLayout {
             wrapper.add(new CollapsibleSection(header, body, true));
         }
         return wrapper;
+    }
+
+    /** Milestone header row: label | weekly-trend sparkline | total · velocity. */
+    private Div milestoneHeader(MilestoneVelocity milestone, UnitToggle.Unit unit) {
+        Span labelSpan = new Span(label(milestone.key(), milestone.name()));
+        labelSpan.getStyle()
+                .set("min-width", "0")
+                .set("font-size", "14px")
+                .set("font-weight", "600")
+                .set("color", DashboardStyle.MILESTONE)
+                .set("overflow-wrap", "anywhere")
+                .set("line-height", "1.3");
+
+        List<Long> values = new ArrayList<>();
+        List<String> tooltips = new ArrayList<>();
+        for (int week = 1; week <= milestone.observedWeeks(); week++) {
+            long seconds = milestone.secondsByWeek().getOrDefault(week, 0L);
+            values.add(seconds);
+            tooltips.add(weekLabel(week, milestone.startDate()) + ": " + unit.format(seconds));
+        }
+        Sparkline spark = new Sparkline(values, tooltips, DashboardStyle.SPENT);
+
+        Span valueSpan = new Span(
+                unit.format(milestone.totalSpentSeconds()) + " · " + unit.formatPerWeek(milestone.avgSecondsPerWeek()));
+        valueSpan.getStyle()
+                .set("font-size", "14px")
+                .set("color", DashboardStyle.MUTED)
+                .set("text-align", "right")
+                .set("white-space", "nowrap");
+
+        Div row = new Div(labelSpan, spark, valueSpan);
+        row.getStyle()
+                .set("display", "grid")
+                .set("grid-template-columns", "1fr 160px 175px")
+                .set("align-items", "center")
+                .set("column-gap", "8px")
+                .set("width", "100%")
+                .set("min-width", "0")
+                .set("box-sizing", "border-box");
+        return row;
     }
 
     // ── per-person tab: weekly velocity per contributor ────────────────────────

@@ -33,7 +33,6 @@ public class VelocityAggregator {
         List<MilestoneVelocity> perMilestone = new ArrayList<>();
         Map<String, Long> personTotals = new LinkedHashMap<>();
         Map<String, Map<String, Map<Integer, Long>>> personByMilestoneWeek = new LinkedHashMap<>();
-        Map<Integer, Long> teamByWeek = new TreeMap<>();
         long totalSeconds = 0;
         int teamObservedWeeks = 0;
 
@@ -51,7 +50,6 @@ public class VelocityAggregator {
 
                 milestoneTotal += seconds;
                 secondsByWeek.merge(week, seconds, Long::sum);
-                teamByWeek.merge(week, seconds, Long::sum);
                 personTotals.merge(author, seconds, Long::sum);
                 personByMilestoneWeek.computeIfAbsent(author, k -> new LinkedHashMap<>())
                         .computeIfAbsent(milestone.key(), k -> new TreeMap<>())
@@ -68,17 +66,11 @@ public class VelocityAggregator {
                     secondsByWeek));
         }
 
-        Map.Entry<Integer, Long> peak = teamByWeek.entrySet().stream()
-                .max(Comparator.comparingLong(Map.Entry::getValue))
-                .orElse(null);
-
         return new VelocityReport(
                 perMilestone,
                 totalSeconds,
                 teamObservedWeeks > 0 ? totalSeconds / teamObservedWeeks : 0,
                 teamObservedWeeks,
-                peak != null ? peak.getKey() : 0,
-                peak != null ? peak.getValue() : 0,
                 persons(personTotals, personByMilestoneWeek));
     }
 

@@ -11,8 +11,6 @@ import java.util.List;
  * @param teamAvgSecondsPerWeek team velocity: total divided by the highest observed
  *                              relative week (0 if no worklogs)
  * @param activeWeeks           highest observed relative week (the velocity denominator)
- * @param peakWeekNumber        relative week with the most logged effort (0 if none)
- * @param peakWeekSeconds       team effort logged in that peak week
  * @param perPerson             per-person weekly velocity, ordered by total desc
  */
 public record VelocityReport(
@@ -20,8 +18,6 @@ public record VelocityReport(
         long totalSeconds,
         long teamAvgSecondsPerWeek,
         int activeWeeks,
-        int peakWeekNumber,
-        long peakWeekSeconds,
         List<PersonVelocity> perPerson) {
 
     public VelocityReport {
