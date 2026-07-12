@@ -10,15 +10,15 @@ import java.util.Map;
  * @param weekStart       the Monday this week starts on
  * @param totalSeconds    team effort logged this week
  * @param secondsByPerson effort per contributor this week, ordered by effort desc
- * @param topIssues       the tickets with the most effort this week, ordered desc
+ * @param issues          every ticket worked on this week, ordered by effort desc
  */
 public record CalendarWeekVelocity(
         LocalDate weekStart,
         long totalSeconds,
         Map<String, Long> secondsByPerson,
-        List<IssueEffort> topIssues) {
+        List<IssueEffort> issues) {
 
     public CalendarWeekVelocity {
-        topIssues = topIssues == null ? List.of() : List.copyOf(topIssues);
+        issues = issues == null ? List.of() : List.copyOf(issues);
     }
 }

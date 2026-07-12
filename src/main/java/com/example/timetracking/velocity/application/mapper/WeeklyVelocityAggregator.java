@@ -31,8 +31,6 @@ import java.util.TreeMap;
 @Component
 public class WeeklyVelocityAggregator {
 
-    private static final int TOP_ISSUES = 5;
-
     public WeeklyVelocityReport aggregate(List<JiraTicket> milestoneTrees, LocalDate from, LocalDate to) {
         Map<LocalDate, Long> teamByWeek = new TreeMap<>();
         Map<LocalDate, Map<String, Long>> weekPerson = new TreeMap<>();
@@ -110,7 +108,7 @@ public class WeeklyVelocityAggregator {
                     weekStart,
                     teamByWeek.getOrDefault(weekStart, 0L),
                     sortedByValueDesc(weekPerson.getOrDefault(weekStart, Map.of())),
-                    topIssues(weekIssue.getOrDefault(weekStart, Map.of()), summaries)));
+                    issues(weekIssue.getOrDefault(weekStart, Map.of()), summaries)));
         }
         return weeks;
     }
@@ -123,10 +121,9 @@ public class WeeklyVelocityAggregator {
         return sorted;
     }
 
-    private List<IssueEffort> topIssues(Map<String, Long> issueSeconds, Map<String, String> summaries) {
+    private List<IssueEffort> issues(Map<String, Long> issueSeconds, Map<String, String> summaries) {
         return issueSeconds.entrySet().stream()
                 .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
-                .limit(TOP_ISSUES)
                 .map(e -> new IssueEffort(e.getKey(), summaries.get(e.getKey()), e.getValue()))
                 .toList();
     }

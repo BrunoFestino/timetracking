@@ -537,8 +537,8 @@ public class VelocityView extends VerticalLayout {
             } else {
                 week.secondsByPerson().forEach((person, seconds) ->
                         body.add(weekRow(person, unit.format(seconds))));
-                body.add(DashboardStyle.note("Top issues"));
-                for (IssueEffort issue : week.topIssues()) {
+                body.add(DashboardStyle.note("Issues"));
+                for (IssueEffort issue : week.issues()) {
                     body.add(weekRow(label(issue.key(), issue.summary()), unit.format(issue.seconds())));
                 }
             }

@@ -22,8 +22,8 @@ public class Sparkline extends Div {
         getStyle()
                 .set("display", "flex")
                 .set("align-items", "flex-end")
-                .set("gap", "2px")
-                .set("height", "30px")
+                .set("gap", "3px")
+                .set("height", "40px")
                 .set("width", "100%")
                 .set("box-sizing", "border-box")
                 .set("border-bottom", "1px solid " + DashboardStyle.REMAINING);
@@ -35,8 +35,8 @@ public class Sparkline extends Div {
 
             Div bar = new Div();
             bar.getStyle()
-                    .set("flex", "1")
-                    .set("min-width", "2px")
+                    .set("flex", "0 1 12px")
+                    .set("min-width", "3px")
                     .set("height", height + "%")
                     .set("background", v > 0 ? color : "transparent")
                     .set("border-radius", "2px 2px 0 0");
