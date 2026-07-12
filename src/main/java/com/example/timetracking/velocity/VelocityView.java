@@ -7,11 +7,17 @@ import com.example.timetracking.milestone.domain.JiraTicket;
 import com.example.timetracking.milestone.ui.style.DashboardStyle;
 import com.example.timetracking.milestone.ui.widget.DetailsRow;
 import com.example.timetracking.velocity.ui.widget.CollapsibleSection;
+import com.example.timetracking.velocity.ui.widget.ModeToggle;
 import com.example.timetracking.velocity.ui.widget.Sparkline;
+import com.example.timetracking.velocity.application.dto.CalendarWeekVelocity;
+import com.example.timetracking.velocity.application.dto.IssueEffort;
 import com.example.timetracking.velocity.application.dto.MilestoneVelocity;
 import com.example.timetracking.velocity.application.dto.PersonVelocity;
+import com.example.timetracking.velocity.application.dto.PersonWeeklyVelocity;
 import com.example.timetracking.velocity.application.dto.VelocityReport;
+import com.example.timetracking.velocity.application.dto.WeeklyVelocityReport;
 import com.example.timetracking.velocity.application.usecase.ComputeVelocityUseCase;
+import com.example.timetracking.velocity.application.usecase.ComputeWeeklyVelocityUseCase;
 import com.example.timetracking.velocity.ui.widget.UnitToggle;
 import com.example.timetracking.views.MainLayout;
 import com.vaadin.flow.component.Component;
@@ -19,6 +25,7 @@ import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.combobox.MultiSelectComboBox;
+import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.dependency.StyleSheet;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.H1;
@@ -33,6 +40,7 @@ import com.vaadin.flow.component.tabs.Tabs;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -49,20 +57,28 @@ public class VelocityView extends VerticalLayout {
     private final transient LoadProjectsUseCase loadProjectsUseCase;
     private final transient LoadMilestonesUseCase loadMilestonesUseCase;
     private final transient ComputeVelocityUseCase computeVelocityUseCase;
+    private final transient ComputeWeeklyVelocityUseCase computeWeeklyVelocityUseCase;
 
+    private final ModeToggle modeToggle = new ModeToggle(mode -> this.applyMode());
     private final ComboBox<JiraProject> projectSelector = new ComboBox<>();
     private final MultiSelectComboBox<JiraTicket> milestoneSelector = new MultiSelectComboBox<>();
+    private final ComboBox<Integer> presetSelector = new ComboBox<>();
+    private final DatePicker fromPicker = new DatePicker();
+    private final DatePicker toPicker = new DatePicker();
     private final Button computeButton = new Button("Compute");
     private final UnitToggle unitToggle = new UnitToggle(unit -> this.render());
     private final Div results = new Div();
 
     private transient VelocityReport report;
+    private transient WeeklyVelocityReport weeklyReport;
 
     public VelocityView(LoadProjectsUseCase loadProjectsUseCase, LoadMilestonesUseCase loadMilestonesUseCase,
-                        ComputeVelocityUseCase computeVelocityUseCase) {
+                        ComputeVelocityUseCase computeVelocityUseCase,
+                        ComputeWeeklyVelocityUseCase computeWeeklyVelocityUseCase) {
         this.loadProjectsUseCase = loadProjectsUseCase;
         this.loadMilestonesUseCase = loadMilestonesUseCase;
         this.computeVelocityUseCase = computeVelocityUseCase;
+        this.computeWeeklyVelocityUseCase = computeWeeklyVelocityUseCase;
 
         setPadding(true);
         setSpacing(true);
@@ -97,10 +113,37 @@ public class VelocityView extends VerticalLayout {
         milestoneSelector.setWidthFull();
         milestoneSelector.getStyle().set("min-width", "0");
 
+        presetSelector.setPlaceholder("Last N weeks");
+        presetSelector.setItems(4, 8, 12);
+        presetSelector.setItemLabelGenerator(n -> "Last " + n + " weeks");
+        presetSelector.setWidth("160px");
+        presetSelector.addValueChangeListener(e -> {
+            if (e.getValue() != null && e.isFromClient()) {
+                applyPreset(e.getValue());
+            }
+        });
+
+        fromPicker.setPlaceholder("From");
+        fromPicker.setWidth("170px");
+        toPicker.setPlaceholder("To");
+        toPicker.setWidth("170px");
+        fromPicker.addValueChangeListener(e -> {
+            if (e.isFromClient()) {
+                presetSelector.clear();
+            }
+        });
+        toPicker.addValueChangeListener(e -> {
+            if (e.isFromClient()) {
+                presetSelector.clear();
+            }
+        });
+        setWeeklyControlsVisible(false);
+
         computeButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         computeButton.addClickListener(e -> compute());
 
-        HorizontalLayout selectors = new HorizontalLayout(projectSelector, milestoneSelector, computeButton, unitToggle);
+        HorizontalLayout selectors = new HorizontalLayout(modeToggle, projectSelector, milestoneSelector,
+                presetSelector, fromPicker, toPicker, computeButton, unitToggle);
         selectors.setAlignItems(FlexComponent.Alignment.BASELINE);
         selectors.setWidthFull();
         selectors.setSpacing(true);
@@ -108,6 +151,27 @@ public class VelocityView extends VerticalLayout {
         selectors.setFlexGrow(1, milestoneSelector);
         selectors.getStyle().set("flex-wrap", "wrap").set("gap", "12px");
         return selectors;
+    }
+
+    /** Switches the controls between per-milestone and per-week mode and re-renders. */
+    private void applyMode() {
+        boolean weekly = modeToggle.value() == ModeToggle.Mode.PER_WEEK;
+        milestoneSelector.setVisible(!weekly);
+        setWeeklyControlsVisible(weekly);
+        render();
+    }
+
+    private void setWeeklyControlsVisible(boolean visible) {
+        presetSelector.setVisible(visible);
+        fromPicker.setVisible(visible);
+        toPicker.setVisible(visible);
+    }
+
+    /** "Last N weeks": from the Monday of (current week − N−1) to this week's Sunday. */
+    private void applyPreset(int weeks) {
+        LocalDate today = LocalDate.now();
+        fromPicker.setValue(today.with(DayOfWeek.MONDAY).minusWeeks(weeks - 1L));
+        toPicker.setValue(today.with(DayOfWeek.SUNDAY));
     }
 
     private void loadMilestones(String projectKey) {
@@ -123,6 +187,10 @@ public class VelocityView extends VerticalLayout {
     }
 
     private void compute() {
+        if (modeToggle.value() == ModeToggle.Mode.PER_WEEK) {
+            computeWeekly();
+            return;
+        }
         List<String> keys = milestoneSelector.getSelectedItems().stream().map(JiraTicket::key).toList();
         if (keys.isEmpty()) {
             Notification.show("Select at least one milestone.");
@@ -139,12 +207,35 @@ public class VelocityView extends VerticalLayout {
         }
     }
 
+    private void computeWeekly() {
+        JiraProject project = projectSelector.getValue();
+        if (project == null) {
+            Notification.show("Select a project.");
+            return;
+        }
+        try {
+            weeklyReport = computeWeeklyVelocityUseCase.execute(project.key(), fromPicker.getValue(), toPicker.getValue());
+            render();
+        } catch (IllegalArgumentException ex) {
+            Notification.show(ex.getMessage());
+        } catch (RuntimeException ex) {
+            results.removeAll();
+            results.add(new Span("Could not compute velocity: " + ex.getMessage()));
+        }
+    }
+
     private void render() {
         results.removeAll();
+        UnitToggle.Unit unit = unitToggle.value();
+        if (modeToggle.value() == ModeToggle.Mode.PER_WEEK) {
+            if (weeklyReport != null) {
+                results.add(weeklySummaryCard(unit), weeklyTabsCard(unit));
+            }
+            return;
+        }
         if (report == null) {
             return;
         }
-        UnitToggle.Unit unit = unitToggle.value();
         results.add(summaryCard(unit), tabsCard(unit));
     }
 
@@ -351,6 +442,200 @@ public class VelocityView extends VerticalLayout {
         return wrapper;
     }
 
+    // ── weekly mode: summary card ───────────────────────────────────────────────
+
+    private Div weeklySummaryCard(UnitToggle.Unit unit) {
+        Div card = card();
+        card.getStyle().set("max-width", "360px").set("width", "100%");
+
+        H4 header = new H4("Team summary");
+        header.getStyle().set("margin", "0 0 12px 0").set("color", DashboardStyle.MILESTONE).set("font-weight", "600");
+        card.add(header);
+
+        card.add(summaryRow("Range",
+                WEEK_DATE.format(weeklyReport.from()) + " – " + START_DATE.format(weeklyReport.to())));
+        card.add(summaryRow("Weeks in range", String.valueOf(weeklyReport.weeksInRange())));
+        card.add(summaryRow("Contributors", String.valueOf(weeklyReport.contributors())));
+        card.add(summaryRow("Total logged", unit.format(weeklyReport.totalSeconds())));
+        card.add(velocityRow(unit.formatPerWeek(weeklyReport.teamAvgSecondsPerWeek())));
+        card.add(summaryRow("Per contributor", unit.formatPerWeek(weeklyReport.perContributorSecondsPerWeek())));
+        return card;
+    }
+
+    // ── weekly mode: tabs card ──────────────────────────────────────────────────
+
+    private Div weeklyTabsCard(UnitToggle.Unit unit) {
+        Div card = card();
+
+        H4 header = new H4("Velocity");
+        header.getStyle().set("margin", "0 0 12px 0").set("color", DashboardStyle.EPIC).set("font-weight", "600");
+
+        Tab teamTab = new Tab("Team velocity");
+        Tab personsTab = new Tab("Per person");
+        Tabs tabs = new Tabs(teamTab, personsTab);
+        tabs.setWidthFull();
+
+        Div contentHolder = new Div();
+        contentHolder.setWidthFull();
+        contentHolder.getStyle()
+                .set("min-width", "0")
+                .set("max-height", "620px")
+                .set("overflow-y", "auto")
+                .set("padding-right", "6px")
+                .set("box-sizing", "border-box")
+                .set("margin-top", "12px");
+
+        Map<Tab, Component> viewsByTab = Map.of(
+                teamTab, weeklyTeamTabContent(unit),
+                personsTab, weeklyPersonsTabContent(unit));
+
+        contentHolder.add(viewsByTab.get(teamTab));
+        tabs.addSelectedChangeListener(event -> {
+            Component selected = viewsByTab.get(event.getSelectedTab());
+            contentHolder.removeAll();
+            if (selected != null) {
+                contentHolder.add(selected);
+            }
+        });
+
+        card.add(header, tabs, contentHolder);
+        return card;
+    }
+
+    // ── weekly mode: team tab (range sparkline + one section per calendar week) ─
+
+    private Component weeklyTeamTabContent(UnitToggle.Unit unit) {
+        Div wrapper = new Div();
+        wrapper.setWidthFull();
+        if (weeklyReport.totalSeconds() == 0) {
+            wrapper.add(DashboardStyle.note("No work logged in the selected range."));
+            return wrapper;
+        }
+
+        List<Long> values = new ArrayList<>();
+        List<String> tooltips = new ArrayList<>();
+        for (CalendarWeekVelocity week : weeklyReport.weeks()) {
+            values.add(week.totalSeconds());
+            tooltips.add(weekOfLabel(week.weekStart()) + ": " + unit.format(week.totalSeconds()));
+        }
+        Div spark = new Div(DashboardStyle.note("Team effort per week"),
+                new Sparkline(values, tooltips, DashboardStyle.SPENT));
+        spark.getStyle()
+                .set("margin-bottom", "12px")
+                .set("max-width", "360px")
+                .set("display", "flex")
+                .set("flex-direction", "column")
+                .set("gap", "4px");
+        wrapper.add(spark);
+
+        for (CalendarWeekVelocity week : weeklyReport.weeks()) {
+            Div header = weekHeader(weekOfLabel(week.weekStart()), unit.format(week.totalSeconds()));
+
+            VerticalLayout body = subRows();
+            if (week.secondsByPerson().isEmpty()) {
+                body.add(DashboardStyle.note("No work logged this week."));
+            } else {
+                week.secondsByPerson().forEach((person, seconds) ->
+                        body.add(weekRow(person, unit.format(seconds))));
+                body.add(DashboardStyle.note("Top issues"));
+                for (IssueEffort issue : week.topIssues()) {
+                    body.add(weekRow(label(issue.key(), issue.summary()), unit.format(issue.seconds())));
+                }
+            }
+            wrapper.add(new CollapsibleSection(header, body));
+        }
+        return wrapper;
+    }
+
+    /** Calendar-week header row: "Week of ..." on the left, the team total on the right. */
+    private Div weekHeader(String label, String value) {
+        Span labelSpan = new Span(label);
+        labelSpan.getStyle()
+                .set("min-width", "0")
+                .set("font-size", "14px")
+                .set("font-weight", "600")
+                .set("color", DashboardStyle.MILESTONE)
+                .set("overflow-wrap", "anywhere")
+                .set("line-height", "1.3");
+
+        Span valueSpan = new Span(value);
+        valueSpan.getStyle()
+                .set("font-size", "14px")
+                .set("color", DashboardStyle.MUTED)
+                .set("text-align", "right")
+                .set("white-space", "nowrap");
+
+        Div row = new Div(labelSpan, valueSpan);
+        row.getStyle()
+                .set("display", "flex")
+                .set("justify-content", "space-between")
+                .set("align-items", "center")
+                .set("width", "100%")
+                .set("min-width", "0")
+                .set("box-sizing", "border-box")
+                .set("column-gap", "8px");
+        return row;
+    }
+
+    // ── weekly mode: per-person tab ─────────────────────────────────────────────
+
+    private Component weeklyPersonsTabContent(UnitToggle.Unit unit) {
+        Div wrapper = new Div();
+        wrapper.setWidthFull();
+        if (weeklyReport.perPerson().isEmpty()) {
+            wrapper.add(DashboardStyle.note("No contributors to display."));
+            return wrapper;
+        }
+
+        for (PersonWeeklyVelocity person : weeklyReport.perPerson()) {
+            long avgSecondsPerWeek = person.totalSeconds() / weeklyReport.weeksInRange();
+
+            List<Long> values = new ArrayList<>();
+            List<String> tooltips = new ArrayList<>();
+            for (CalendarWeekVelocity week : weeklyReport.weeks()) {
+                long seconds = person.secondsByWeek().getOrDefault(week.weekStart(), 0L);
+                values.add(seconds);
+                tooltips.add(weekOfLabel(week.weekStart()) + ": " + unit.format(seconds));
+            }
+
+            Span labelSpan = new Span(person.name());
+            labelSpan.getStyle()
+                    .set("min-width", "0")
+                    .set("font-size", "14px")
+                    .set("font-weight", "600")
+                    .set("color", DashboardStyle.INK)
+                    .set("overflow-wrap", "anywhere")
+                    .set("line-height", "1.3");
+
+            Span valueSpan = new Span(
+                    unit.format(person.totalSeconds()) + " · " + unit.formatPerWeek(avgSecondsPerWeek));
+            valueSpan.getStyle()
+                    .set("font-size", "14px")
+                    .set("color", DashboardStyle.MUTED)
+                    .set("text-align", "right")
+                    .set("white-space", "nowrap");
+
+            Div header = new Div(labelSpan, new Sparkline(values, tooltips, DashboardStyle.SPENT), valueSpan);
+            header.getStyle()
+                    .set("display", "grid")
+                    .set("grid-template-columns", "1fr 160px 175px")
+                    .set("align-items", "center")
+                    .set("column-gap", "8px")
+                    .set("width", "100%")
+                    .set("min-width", "0")
+                    .set("box-sizing", "border-box");
+
+            VerticalLayout body = subRows();
+            for (CalendarWeekVelocity week : weeklyReport.weeks()) {
+                long seconds = person.secondsByWeek().getOrDefault(week.weekStart(), 0L);
+                body.add(weekRow(weekOfLabel(week.weekStart()), unit.format(seconds)));
+            }
+
+            wrapper.add(new CollapsibleSection(header, body));
+        }
+        return wrapper;
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────────────
 
     private static final DateTimeFormatter WEEK_DATE = DateTimeFormatter.ofPattern("MMM d", Locale.US);
@@ -363,6 +648,12 @@ public class VelocityView extends VerticalLayout {
     private <T extends Div> T wide(T row) {
         row.getStyle().set("grid-template-columns", "1fr 160px 175px");
         return row;
+    }
+
+    /** Calendar-week label, e.g. "Week of Jun 1 (Jun 1 – Jun 7)". */
+    private String weekOfLabel(LocalDate weekStart) {
+        return "Week of " + WEEK_DATE.format(weekStart)
+                + " (" + WEEK_DATE.format(weekStart) + " – " + WEEK_DATE.format(weekStart.plusDays(6)) + ")";
     }
 
     /** Week label with its real date range when the milestone start is known, e.g. "Week 1 (Jul 6 – Jul 12)". */
