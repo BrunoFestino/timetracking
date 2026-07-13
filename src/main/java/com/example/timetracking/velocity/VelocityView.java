@@ -9,6 +9,7 @@ import com.example.timetracking.milestone.ui.widget.DetailsRow;
 import com.example.timetracking.velocity.ui.widget.CollapsibleSection;
 import com.example.timetracking.velocity.ui.widget.ModeToggle;
 import com.example.timetracking.velocity.ui.widget.Sparkline;
+import com.example.timetracking.velocity.ui.widget.WeeklyBarChart;
 import com.example.timetracking.velocity.application.dto.CalendarWeekVelocity;
 import com.example.timetracking.velocity.application.dto.IssueEffort;
 import com.example.timetracking.velocity.application.dto.MilestoneVelocity;
@@ -512,21 +513,23 @@ public class VelocityView extends VerticalLayout {
             return wrapper;
         }
 
-        List<Long> values = new ArrayList<>();
-        List<String> tooltips = new ArrayList<>();
+        List<WeeklyBarChart.Column> columns = new ArrayList<>();
         for (CalendarWeekVelocity week : weeklyReport.weeks()) {
-            values.add(week.totalSeconds());
-            tooltips.add(weekOfLabel(week.weekStart()) + ": " + unit.format(week.totalSeconds()));
+            columns.add(new WeeklyBarChart.Column(
+                    week.totalSeconds(),
+                    bareValue(unit, week.totalSeconds()),
+                    WEEK_DATE.format(week.weekStart()),
+                    weekOfLabel(week.weekStart()) + ": " + unit.format(week.totalSeconds())));
         }
-        Div spark = new Div(DashboardStyle.note("Team effort per week"),
-                new Sparkline(values, tooltips, DashboardStyle.SPENT));
-        spark.getStyle()
-                .set("margin-bottom", "12px")
-                .set("max-width", "360px")
+        Div chart = new Div(DashboardStyle.note("Team effort per week"),
+                new WeeklyBarChart(columns, weeklyReport.teamAvgSecondsPerWeek(),
+                        "avg " + unit.formatPerWeek(weeklyReport.teamAvgSecondsPerWeek()), DashboardStyle.SPENT));
+        chart.getStyle()
+                .set("margin-bottom", "16px")
                 .set("display", "flex")
                 .set("flex-direction", "column")
-                .set("gap", "4px");
-        wrapper.add(spark);
+                .set("gap", "6px");
+        wrapper.add(chart);
 
         for (CalendarWeekVelocity week : weeklyReport.weeks()) {
             Div header = weekHeader(weekOfLabel(week.weekStart()), unit.format(week.totalSeconds()));
@@ -648,6 +651,13 @@ public class VelocityView extends VerticalLayout {
     private <T extends Div> T wide(T row) {
         row.getStyle().set("grid-template-columns", "1fr 160px 175px");
         return row;
+    }
+
+    /** "5.0 MD" → "5.0": number-only label for above-bar values. */
+    private String bareValue(UnitToggle.Unit unit, long seconds) {
+        String formatted = unit.format(seconds);
+        int space = formatted.indexOf(' ');
+        return space > 0 ? formatted.substring(0, space) : formatted;
     }
 
     /** Calendar-week label, e.g. "Week of Jun 1 (Jun 1 – Jun 7)". */
