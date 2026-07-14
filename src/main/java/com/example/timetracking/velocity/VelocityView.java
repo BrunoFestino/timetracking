@@ -705,31 +705,23 @@ public class VelocityView extends VerticalLayout {
     }
 
     /**
-     * A weekly row without a bar: "Week N (dates)" on the left, the value on the right,
-     * joined by a dotted leader so the value reads against its label across a wide card.
+     * A weekly row without a bar: "Week N (dates)" with the value right next to it,
+     * so each figure reads against its label instead of sitting at the card's far edge.
      */
     private Div weekRow(String label, String value) {
         Span labelSpan = new Span(label);
         labelSpan.getStyle().set("font-size", "13px").set("color", DashboardStyle.INK)
                 .set("min-width", "0");
 
-        Div leader = new Div();
-        leader.getStyle()
-                .set("flex", "1")
-                .set("min-width", "24px")
-                .set("margin", "0 8px")
-                .set("border-bottom", "1px dotted #C6CCD1")
-                .set("align-self", "flex-end")
-                .set("transform", "translateY(-4px)");
-
         Span valueSpan = new Span(value);
         valueSpan.getStyle().set("font-size", "13px").set("color", DashboardStyle.MUTED)
-                .set("text-align", "right").set("white-space", "nowrap");
+                .set("white-space", "nowrap");
 
-        Div row = new Div(labelSpan, leader, valueSpan);
+        Div row = new Div(labelSpan, valueSpan);
         row.getStyle()
                 .set("display", "flex")
                 .set("align-items", "baseline")
+                .set("column-gap", "12px")
                 .set("width", "100%")
                 .set("padding", "5px 0 5px 16px")
                 .set("box-sizing", "border-box")
