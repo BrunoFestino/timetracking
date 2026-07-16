@@ -19,6 +19,7 @@ import com.example.timetracking.velocity.application.dto.VelocityReport;
 import com.example.timetracking.velocity.application.dto.WeeklyVelocityReport;
 import com.example.timetracking.velocity.application.usecase.ComputeVelocityUseCase;
 import com.example.timetracking.velocity.application.usecase.ComputeWeeklyVelocityUseCase;
+import com.example.timetracking.velocity.ui.style.VelocityStyles;
 import com.example.timetracking.velocity.ui.widget.UnitToggle;
 import com.example.timetracking.views.MainLayout;
 import com.vaadin.flow.component.Component;
@@ -32,6 +33,7 @@ import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.H1;
 import com.vaadin.flow.component.html.H4;
 import com.vaadin.flow.component.html.Span;
+import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
@@ -84,6 +86,7 @@ public class VelocityView extends VerticalLayout {
         setPadding(true);
         setSpacing(true);
         getStyle().set("font-family", DashboardStyle.FONT).set("color", DashboardStyle.INK);
+        VelocityStyles.injectStyles(this);
 
         results.getStyle()
                 .set("margin-top", "16px")
@@ -93,13 +96,42 @@ public class VelocityView extends VerticalLayout {
                 .set("align-items", "center")
                 .set("gap", "12px");
 
-        add(title(), selectors(), results);
+        add(header(), toolbar(), results);
     }
 
-    private H1 title() {
+    /** Page heading: title plus a one-line description of what the view shows. */
+    private Div header() {
         H1 title = new H1("Team Velocity");
-        title.getStyle().set("color", DashboardStyle.PRIMARY_900).set("font-weight", "700");
-        return title;
+        title.getStyle()
+                .set("color", DashboardStyle.PRIMARY_900)
+                .set("font-weight", "700")
+                .set("margin", "0 0 2px 0");
+
+        Span subtitle = new Span("Logged effort per week, milestone and contributor");
+        subtitle.getStyle().set("font-size", "14px").set("color", DashboardStyle.MUTED);
+
+        Div header = new Div(title, subtitle);
+        header.getStyle().set("display", "flex").set("flex-direction", "column");
+        return header;
+    }
+
+    /** Wraps the selectors row in card chrome so the controls read as one toolbar. */
+    private Div toolbar() {
+        Div card = card(null);
+        card.getStyle().set("padding", "12px 16px");
+        card.add(selectors());
+        return card;
+    }
+
+    /** A 1px vertical rule separating toolbar groups (mode | inputs | unit). */
+    private Div toolbarDivider() {
+        Div divider = new Div();
+        divider.getStyle()
+                .set("width", "1px")
+                .set("height", "24px")
+                .set("flex-shrink", "0")
+                .set("background", "#E5E8EA");
+        return divider;
     }
 
     private HorizontalLayout selectors() {
@@ -141,11 +173,13 @@ public class VelocityView extends VerticalLayout {
         setWeeklyControlsVisible(false);
 
         computeButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        computeButton.setIcon(VaadinIcon.PLAY.create());
+        computeButton.setDisableOnClick(true);
         computeButton.addClickListener(e -> compute());
 
-        HorizontalLayout selectors = new HorizontalLayout(modeToggle, projectSelector, milestoneSelector,
-                presetSelector, fromPicker, toPicker, computeButton, unitToggle);
-        selectors.setAlignItems(FlexComponent.Alignment.BASELINE);
+        HorizontalLayout selectors = new HorizontalLayout(modeToggle, toolbarDivider(), projectSelector,
+                milestoneSelector, presetSelector, fromPicker, toPicker, computeButton, toolbarDivider(), unitToggle);
+        selectors.setAlignItems(FlexComponent.Alignment.CENTER);
         selectors.setWidthFull();
         selectors.setSpacing(true);
         selectors.setPadding(false);
@@ -188,23 +222,26 @@ public class VelocityView extends VerticalLayout {
     }
 
     private void compute() {
-        if (modeToggle.value() == ModeToggle.Mode.PER_WEEK) {
-            computeWeekly();
-            return;
-        }
-        List<String> keys = milestoneSelector.getSelectedItems().stream().map(JiraTicket::key).toList();
-        if (keys.isEmpty()) {
-            Notification.show("Select at least one milestone.");
-            return;
-        }
         try {
-            report = computeVelocityUseCase.execute(keys);
-            render();
-        } catch (IllegalArgumentException ex) {
-            Notification.show(ex.getMessage());
-        } catch (RuntimeException ex) {
-            results.removeAll();
-            results.add(new Span("Could not compute velocity: " + ex.getMessage()));
+            if (modeToggle.value() == ModeToggle.Mode.PER_WEEK) {
+                computeWeekly();
+                return;
+            }
+            List<String> keys = milestoneSelector.getSelectedItems().stream().map(JiraTicket::key).toList();
+            if (keys.isEmpty()) {
+                Notification.show("Select at least one milestone.");
+                return;
+            }
+            try {
+                report = computeVelocityUseCase.execute(keys);
+                render();
+            } catch (IllegalArgumentException ex) {
+                Notification.show(ex.getMessage());
+            } catch (RuntimeException ex) {
+                showComputeError(ex);
+            }
+        } finally {
+            computeButton.setEnabled(true);
         }
     }
 
@@ -220,9 +257,15 @@ public class VelocityView extends VerticalLayout {
         } catch (IllegalArgumentException ex) {
             Notification.show(ex.getMessage());
         } catch (RuntimeException ex) {
-            results.removeAll();
-            results.add(new Span("Could not compute velocity: " + ex.getMessage()));
+            showComputeError(ex);
         }
+    }
+
+    private void showComputeError(RuntimeException ex) {
+        results.removeAll();
+        Div card = card(DashboardStyle.OVER);
+        card.add(VelocityStyles.emptyState(VaadinIcon.WARNING, "Could not compute velocity", ex.getMessage()));
+        results.add(card);
     }
 
     private void render() {
@@ -243,70 +286,53 @@ public class VelocityView extends VerticalLayout {
     // ── summary card ────────────────────────────────────────────────────────────
 
     private Div summaryCard(UnitToggle.Unit unit) {
-        Div card = card();
-        card.getStyle().set("max-width", "360px").set("width", "100%");
+        return summaryCard(
+                VelocityStyles.kpiTile("Team velocity", unit.formatPerWeek(report.teamAvgSecondsPerWeek()), true),
+                VelocityStyles.kpiTile("Total logged", unit.format(report.totalSeconds()), false),
+                VelocityStyles.kpiTile("Contributors", String.valueOf(report.contributors()), false),
+                VelocityStyles.kpiTile("Milestones", String.valueOf(report.milestones().size()), false),
+                VelocityStyles.kpiTile("Active weeks", String.valueOf(report.activeWeeks()), false),
+                VelocityStyles.kpiTile("Per contributor",
+                        unit.formatPerWeek(report.perContributorSecondsPerWeek()), false));
+    }
+
+    /** "Team summary" card: a wrapping row of KPI tiles, the team velocity leading. */
+    private Div summaryCard(Div... tiles) {
+        Div card = card(DashboardStyle.MILESTONE);
 
         H4 header = new H4("Team summary");
         header.getStyle().set("margin", "0 0 12px 0").set("color", DashboardStyle.MILESTONE).set("font-weight", "600");
-        card.add(header);
 
-        card.add(summaryRow("Milestones", String.valueOf(report.milestones().size())));
-        card.add(summaryRow("Contributors", String.valueOf(report.contributors())));
-        card.add(summaryRow("Total logged", unit.format(report.totalSeconds())));
-        card.add(summaryRow("Active weeks", String.valueOf(report.activeWeeks())));
-        card.add(velocityRow(unit.formatPerWeek(report.teamAvgSecondsPerWeek())));
-        card.add(summaryRow("Per contributor", unit.formatPerWeek(report.perContributorSecondsPerWeek())));
+        Div tileRow = new Div(tiles);
+        tileRow.addClassName(VelocityStyles.KPI_ROW_CLASS);
+        tileRow.setWidthFull();
+
+        card.add(header, tileRow);
         return card;
-    }
-
-    /** Headline row: the team's weekly velocity, visually dominant over the other summary rows. */
-    private Div velocityRow(String value) {
-        Span labelSpan = new Span("Team velocity");
-        labelSpan.getStyle().set("font-size", "13px").set("font-weight", "600").set("color", DashboardStyle.INK);
-
-        Span valueSpan = new Span(value);
-        valueSpan.getStyle()
-                .set("font-size", "16px")
-                .set("font-weight", "600")
-                .set("color", DashboardStyle.PRIMARY_900)
-                .set("text-align", "right");
-
-        Div row = new Div(labelSpan, valueSpan);
-        row.getStyle()
-                .set("display", "flex")
-                .set("justify-content", "space-between")
-                .set("align-items", "baseline")
-                .set("width", "100%")
-                .set("padding", "6px 0 3px 0")
-                .set("margin-top", "4px")
-                .set("border-top", "1px solid #E5E8EA");
-        return row;
-    }
-
-    private Div summaryRow(String label, String value) {
-        Span labelSpan = new Span(label);
-        labelSpan.getStyle().set("font-size", "13px").set("font-weight", "500").set("color", DashboardStyle.MUTED);
-
-        Span valueSpan = new Span(value);
-        valueSpan.getStyle().set("font-size", "13px").set("color", DashboardStyle.INK).set("text-align", "right");
-
-        Div row = new Div(labelSpan, valueSpan);
-        row.getStyle()
-                .set("display", "flex")
-                .set("justify-content", "space-between")
-                .set("align-items", "baseline")
-                .set("width", "100%")
-                .set("padding", "3px 0");
-        return row;
     }
 
     // ── tabs card ───────────────────────────────────────────────────────────────
 
     private Div tabsCard(UnitToggle.Unit unit) {
-        Div card = card();
+        return tabsCard(unit, teamTabContent(unit), personsTabContent(unit));
+    }
+
+    /** "Velocity" card shared by both modes: header with unit chip, tabs and content. */
+    private Div tabsCard(UnitToggle.Unit unit, Component teamContent, Component personsContent) {
+        Div card = card(DashboardStyle.EPIC);
 
         H4 header = new H4("Velocity");
-        header.getStyle().set("margin", "0 0 12px 0").set("color", DashboardStyle.EPIC).set("font-weight", "600");
+        header.getStyle().set("margin", "0").set("color", DashboardStyle.EPIC).set("font-weight", "600");
+
+        Span unitChip = DashboardStyle.pill(
+                unit == UnitToggle.Unit.MAN_DAYS ? "man-days" : "hours", DashboardStyle.SPENT);
+
+        Div headerRow = new Div(header, unitChip);
+        headerRow.getStyle()
+                .set("display", "flex")
+                .set("justify-content", "space-between")
+                .set("align-items", "center")
+                .set("margin-bottom", "12px");
 
         Tab teamTab = new Tab("Team velocity");
         Tab personsTab = new Tab("Per person");
@@ -324,8 +350,8 @@ public class VelocityView extends VerticalLayout {
                 .set("margin-top", "12px");
 
         Map<Tab, Component> viewsByTab = Map.of(
-                teamTab, teamTabContent(unit),
-                personsTab, personsTabContent(unit));
+                teamTab, teamContent,
+                personsTab, personsContent);
 
         contentHolder.add(viewsByTab.get(teamTab));
         tabs.addSelectedChangeListener(event -> {
@@ -336,7 +362,7 @@ public class VelocityView extends VerticalLayout {
             }
         });
 
-        card.add(header, tabs, contentHolder);
+        card.add(headerRow, tabs, contentHolder);
         return card;
     }
 
@@ -346,7 +372,8 @@ public class VelocityView extends VerticalLayout {
         Div wrapper = new Div();
         wrapper.setWidthFull();
         if (report.milestones().isEmpty()) {
-            wrapper.add(DashboardStyle.note("No milestones selected."));
+            wrapper.add(VelocityStyles.emptyState(VaadinIcon.FLAG_O, "No milestones selected",
+                    "Pick one or more milestones above and press Compute."));
             return wrapper;
         }
 
@@ -411,7 +438,8 @@ public class VelocityView extends VerticalLayout {
         Div wrapper = new Div();
         wrapper.setWidthFull();
         if (report.perPerson().isEmpty()) {
-            wrapper.add(DashboardStyle.note("No contributors to display."));
+            wrapper.add(VelocityStyles.emptyState(VaadinIcon.USERS, "No contributors to display",
+                    "No one logged time in this selection."));
             return wrapper;
         }
         long maxTotal = report.perPerson().stream().mapToLong(PersonVelocity::totalSeconds).max().orElse(1L);
@@ -446,61 +474,22 @@ public class VelocityView extends VerticalLayout {
     // ── weekly mode: summary card ───────────────────────────────────────────────
 
     private Div weeklySummaryCard(UnitToggle.Unit unit) {
-        Div card = card();
-        card.getStyle().set("max-width", "360px").set("width", "100%");
-
-        H4 header = new H4("Team summary");
-        header.getStyle().set("margin", "0 0 12px 0").set("color", DashboardStyle.MILESTONE).set("font-weight", "600");
-        card.add(header);
-
-        card.add(summaryRow("Range",
-                WEEK_DATE.format(weeklyReport.from()) + " – " + START_DATE.format(weeklyReport.to())));
-        card.add(summaryRow("Weeks in range", String.valueOf(weeklyReport.weeksInRange())));
-        card.add(summaryRow("Contributors", String.valueOf(weeklyReport.contributors())));
-        card.add(summaryRow("Total logged", unit.format(weeklyReport.totalSeconds())));
-        card.add(velocityRow(unit.formatPerWeek(weeklyReport.teamAvgSecondsPerWeek())));
-        card.add(summaryRow("Per contributor", unit.formatPerWeek(weeklyReport.perContributorSecondsPerWeek())));
-        return card;
+        return summaryCard(
+                VelocityStyles.kpiTile("Team velocity",
+                        unit.formatPerWeek(weeklyReport.teamAvgSecondsPerWeek()), true),
+                VelocityStyles.kpiTile("Total logged", unit.format(weeklyReport.totalSeconds()), false),
+                VelocityStyles.kpiTile("Contributors", String.valueOf(weeklyReport.contributors()), false),
+                VelocityStyles.kpiTile("Weeks in range", String.valueOf(weeklyReport.weeksInRange()), false),
+                VelocityStyles.kpiTile("Range",
+                        WEEK_DATE.format(weeklyReport.from()) + " – " + START_DATE.format(weeklyReport.to()), false),
+                VelocityStyles.kpiTile("Per contributor",
+                        unit.formatPerWeek(weeklyReport.perContributorSecondsPerWeek()), false));
     }
 
     // ── weekly mode: tabs card ──────────────────────────────────────────────────
 
     private Div weeklyTabsCard(UnitToggle.Unit unit) {
-        Div card = card();
-
-        H4 header = new H4("Velocity");
-        header.getStyle().set("margin", "0 0 12px 0").set("color", DashboardStyle.EPIC).set("font-weight", "600");
-
-        Tab teamTab = new Tab("Team velocity");
-        Tab personsTab = new Tab("Per person");
-        Tabs tabs = new Tabs(teamTab, personsTab);
-        tabs.setWidthFull();
-
-        Div contentHolder = new Div();
-        contentHolder.setWidthFull();
-        contentHolder.getStyle()
-                .set("min-width", "0")
-                .set("max-height", "620px")
-                .set("overflow-y", "auto")
-                .set("padding-right", "6px")
-                .set("box-sizing", "border-box")
-                .set("margin-top", "12px");
-
-        Map<Tab, Component> viewsByTab = Map.of(
-                teamTab, weeklyTeamTabContent(unit),
-                personsTab, weeklyPersonsTabContent(unit));
-
-        contentHolder.add(viewsByTab.get(teamTab));
-        tabs.addSelectedChangeListener(event -> {
-            Component selected = viewsByTab.get(event.getSelectedTab());
-            contentHolder.removeAll();
-            if (selected != null) {
-                contentHolder.add(selected);
-            }
-        });
-
-        card.add(header, tabs, contentHolder);
-        return card;
+        return tabsCard(unit, weeklyTeamTabContent(unit), weeklyPersonsTabContent(unit));
     }
 
     // ── weekly mode: team tab (range sparkline + one section per calendar week) ─
@@ -509,7 +498,8 @@ public class VelocityView extends VerticalLayout {
         Div wrapper = new Div();
         wrapper.setWidthFull();
         if (weeklyReport.totalSeconds() == 0) {
-            wrapper.add(DashboardStyle.note("No work logged in the selected range."));
+            wrapper.add(VelocityStyles.emptyState(VaadinIcon.CALENDAR_O, "No work logged in the selected range",
+                    "Try a wider date range."));
             return wrapper;
         }
 
@@ -586,7 +576,8 @@ public class VelocityView extends VerticalLayout {
         Div wrapper = new Div();
         wrapper.setWidthFull();
         if (weeklyReport.perPerson().isEmpty()) {
-            wrapper.add(DashboardStyle.note("No contributors to display."));
+            wrapper.add(VelocityStyles.emptyState(VaadinIcon.USERS, "No contributors to display",
+                    "No one logged time in this selection."));
             return wrapper;
         }
 
@@ -682,7 +673,8 @@ public class VelocityView extends VerticalLayout {
                 : planned;
     }
 
-    private Div card() {
+    /** White rounded card; a non-null accent colour adds a coloured left edge. */
+    private Div card(String accentColor) {
         Div card = new Div();
         card.setWidthFull();
         card.getStyle()
@@ -693,6 +685,9 @@ public class VelocityView extends VerticalLayout {
                 .set("border-radius", "12px")
                 .set("box-shadow", "0 2px 8px rgba(31,42,48,0.08)")
                 .set("box-sizing", "border-box");
+        if (accentColor != null) {
+            card.getStyle().set("border-left", "3px solid " + accentColor);
+        }
         return card;
     }
 

@@ -1,7 +1,10 @@
 package com.example.timetracking.velocity.ui.widget;
 
+import com.example.timetracking.velocity.ui.style.VelocityStyles;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.html.Div;
+import com.vaadin.flow.component.icon.Icon;
+import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.dom.DomEventListener;
 
 /**
@@ -16,7 +19,7 @@ public class CollapsibleSection extends Div {
     static final String CHEVRON_WIDTH = "20px";
 
     private final Div body;
-    private final Div chevron;
+    private final Icon chevron;
     private boolean open = false;
 
     public CollapsibleSection(Div header, Component bodyContent) {
@@ -30,27 +33,30 @@ public class CollapsibleSection extends Div {
                 .set("margin-bottom", "8px");
 
         // ── chevron ───────────────────────────────────────────────────────────────
-        chevron = new Div();
+        chevron = VaadinIcon.ANGLE_RIGHT.create();
+        chevron.addClassName(VelocityStyles.CHEVRON_CLASS);
+        chevron.setSize("14px");
         chevron.getStyle()
+                .set("color", "#5F6B72")
+                .set("transform", "rotate(0deg)");
+
+        Div chevronBox = new Div(chevron);
+        chevronBox.getStyle()
                 .set("flex-shrink", "0")
                 .set("width", CHEVRON_WIDTH)
-                .set("font-size", "12px")
-                .set("line-height", "1")
                 .set("display", "flex")
                 .set("align-items", "center")
-                .set("justify-content", "center")
-                .set("color", "#5F6B72")
-                .set("transition", "transform 0.15s ease")
-                .set("transform", "rotate(0deg)");
-        chevron.setText("▶️");
+                .set("justify-content", "center");
 
         // ── header wrapper (chevron + header row) ─────────────────────────────────
-        Div headerWrap = new Div(chevron, header);
+        Div headerWrap = new Div(chevronBox, header);
+        headerWrap.addClassName(VelocityStyles.COLLAPSE_HEADER_CLASS);
         headerWrap.getStyle()
                 .set("display", "flex")
                 .set("align-items", "center")
                 .set("width", "100%")
                 .set("box-sizing", "border-box")
+                .set("padding", "3px 6px 3px 0")
                 .set("cursor", "pointer")
                 .set("user-select", "none");
 
