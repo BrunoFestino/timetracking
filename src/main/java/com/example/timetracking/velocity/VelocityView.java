@@ -49,7 +49,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 @Route(value = "velocity", layout = MainLayout.class)
@@ -68,7 +67,7 @@ public class VelocityView extends VerticalLayout {
     private final ComboBox<Integer> presetSelector = new ComboBox<>();
     private final DatePicker fromPicker = new DatePicker();
     private final DatePicker toPicker = new DatePicker();
-    private final Button computeButton = new Button("Compute");
+    private final Button searchButton = new Button("Search");
     private final UnitToggle unitToggle = new UnitToggle(unit -> this.render());
     private final Div results = new Div();
 
@@ -134,7 +133,11 @@ public class VelocityView extends VerticalLayout {
         return divider;
     }
 
-    private HorizontalLayout selectors() {
+    /**
+     * Two fixed toolbar rows — inputs on top, the action row (Search + unit) underneath —
+     * so both modes present the same silhouette regardless of how many inputs are visible.
+     */
+    private Div selectors() {
         projectSelector.setPlaceholder("Select a project");
         projectSelector.setWidth("260px");
         projectSelector.setItems(loadProjectsUseCase.loadProjects());
@@ -156,10 +159,14 @@ public class VelocityView extends VerticalLayout {
             }
         });
 
+        DatePicker.DatePickerI18n dateFormat = new DatePicker.DatePickerI18n();
+        dateFormat.setDateFormat("yyyy/MM/dd");
         fromPicker.setPlaceholder("From");
         fromPicker.setWidth("170px");
+        fromPicker.setI18n(dateFormat);
         toPicker.setPlaceholder("To");
         toPicker.setWidth("170px");
+        toPicker.setI18n(dateFormat);
         fromPicker.addValueChangeListener(e -> {
             if (e.isFromClient()) {
                 presetSelector.clear();
@@ -172,20 +179,29 @@ public class VelocityView extends VerticalLayout {
         });
         setWeeklyControlsVisible(false);
 
-        computeButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
-        computeButton.setIcon(VaadinIcon.PLAY.create());
-        computeButton.setDisableOnClick(true);
-        computeButton.addClickListener(e -> compute());
+        searchButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        searchButton.setIcon(VaadinIcon.SEARCH.create());
+        searchButton.setDisableOnClick(true);
+        searchButton.addClickListener(e -> compute());
 
-        HorizontalLayout selectors = new HorizontalLayout(modeToggle, toolbarDivider(), projectSelector,
-                milestoneSelector, presetSelector, fromPicker, toPicker, computeButton, toolbarDivider(), unitToggle);
-        selectors.setAlignItems(FlexComponent.Alignment.CENTER);
-        selectors.setWidthFull();
-        selectors.setSpacing(true);
-        selectors.setPadding(false);
-        selectors.setFlexGrow(1, milestoneSelector);
-        selectors.getStyle().set("flex-wrap", "wrap").set("gap", "12px");
-        return selectors;
+        HorizontalLayout inputsRow = new HorizontalLayout(modeToggle, toolbarDivider(), projectSelector,
+                milestoneSelector, presetSelector, fromPicker, toPicker);
+        inputsRow.setAlignItems(FlexComponent.Alignment.CENTER);
+        inputsRow.setWidthFull();
+        inputsRow.setSpacing(true);
+        inputsRow.setPadding(false);
+        inputsRow.setFlexGrow(1, milestoneSelector);
+        inputsRow.getStyle().set("flex-wrap", "wrap").set("gap", "12px");
+
+        HorizontalLayout actionRow = new HorizontalLayout(searchButton, toolbarDivider(), unitToggle);
+        actionRow.setAlignItems(FlexComponent.Alignment.CENTER);
+        actionRow.setSpacing(true);
+        actionRow.setPadding(false);
+        actionRow.getStyle().set("gap", "12px");
+
+        Div rows = new Div(inputsRow, actionRow);
+        rows.getStyle().set("display", "flex").set("flex-direction", "column").set("gap", "12px");
+        return rows;
     }
 
     /** Switches the controls between per-milestone and per-week mode and re-renders. */
@@ -241,7 +257,7 @@ public class VelocityView extends VerticalLayout {
                 showComputeError(ex);
             }
         } finally {
-            computeButton.setEnabled(true);
+            searchButton.setEnabled(true);
         }
     }
 
@@ -373,7 +389,7 @@ public class VelocityView extends VerticalLayout {
         wrapper.setWidthFull();
         if (report.milestones().isEmpty()) {
             wrapper.add(VelocityStyles.emptyState(VaadinIcon.FLAG_O, "No milestones selected",
-                    "Pick one or more milestones above and press Compute."));
+                    "Pick one or more milestones above and press Search."));
             return wrapper;
         }
 
@@ -481,7 +497,7 @@ public class VelocityView extends VerticalLayout {
                 VelocityStyles.kpiTile("Contributors", String.valueOf(weeklyReport.contributors()), false),
                 VelocityStyles.kpiTile("Weeks in range", String.valueOf(weeklyReport.weeksInRange()), false),
                 VelocityStyles.kpiTile("Range",
-                        WEEK_DATE.format(weeklyReport.from()) + " – " + START_DATE.format(weeklyReport.to()), false),
+                        DATE.format(weeklyReport.from()) + " – " + DATE.format(weeklyReport.to()), false),
                 VelocityStyles.kpiTile("Per contributor",
                         unit.formatPerWeek(weeklyReport.perContributorSecondsPerWeek()), false));
     }
@@ -508,7 +524,7 @@ public class VelocityView extends VerticalLayout {
             columns.add(new WeeklyBarChart.Column(
                     week.totalSeconds(),
                     bareValue(unit, week.totalSeconds()),
-                    WEEK_DATE.format(week.weekStart()),
+                    DATE.format(week.weekStart()),
                     weekOfLabel(week.weekStart()) + ": " + unit.format(week.totalSeconds())));
         }
         Div chart = new Div(DashboardStyle.note("Team effort per week"),
@@ -632,8 +648,8 @@ public class VelocityView extends VerticalLayout {
 
     // ── helpers ─────────────────────────────────────────────────────────────────
 
-    private static final DateTimeFormatter WEEK_DATE = DateTimeFormatter.ofPattern("MMM d", Locale.US);
-    private static final DateTimeFormatter START_DATE = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US);
+    /** Single date format for every rendered date in the view, e.g. "2026/07/16". */
+    private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy/MM/dd");
 
     /**
      * Widens the value column of a {@link DetailsRow} header grid so combined values like
@@ -651,25 +667,24 @@ public class VelocityView extends VerticalLayout {
         return space > 0 ? formatted.substring(0, space) : formatted;
     }
 
-    /** Calendar-week label, e.g. "Week of Jun 1 (Jun 1 – Jun 7)". */
+    /** Calendar-week label, e.g. "Week of 2026/06/01 – 2026/06/07". */
     private String weekOfLabel(LocalDate weekStart) {
-        return "Week of " + WEEK_DATE.format(weekStart)
-                + " (" + WEEK_DATE.format(weekStart) + " – " + WEEK_DATE.format(weekStart.plusDays(6)) + ")";
+        return "Week of " + DATE.format(weekStart) + " – " + DATE.format(weekStart.plusDays(6));
     }
 
-    /** Week label with its real date range when the milestone start is known, e.g. "Week 1 (Jul 6 – Jul 12)". */
+    /** Week label with its real date range when the milestone start is known, e.g. "Week 1 (2026/07/06 – 2026/07/12)". */
     private String weekLabel(int week, LocalDate start) {
         if (start == null) {
             return "Week " + week;
         }
         LocalDate from = start.plusDays(7L * (week - 1));
-        return "Week " + week + " (" + WEEK_DATE.format(from) + " – " + WEEK_DATE.format(from.plusDays(6)) + ")";
+        return "Week " + week + " (" + DATE.format(from) + " – " + DATE.format(from.plusDays(6)) + ")";
     }
 
     private String startNote(MilestoneVelocity milestone) {
         String planned = "planned " + milestone.durationWeeks() + " week(s)";
         return milestone.startDate() != null
-                ? "Started " + START_DATE.format(milestone.startDate()) + " · " + planned
+                ? "Started " + DATE.format(milestone.startDate()) + " · " + planned
                 : planned;
     }
 
