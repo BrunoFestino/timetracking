@@ -134,8 +134,9 @@ public class VelocityView extends VerticalLayout {
     }
 
     /**
-     * Two fixed toolbar rows — inputs on top, the action row (Search + unit) underneath —
-     * so both modes present the same silhouette regardless of how many inputs are visible.
+     * Three fixed toolbar rows — mode and project on top, the mode's filters (milestones,
+     * or preset + date range) in the middle, the action row (Search + unit) underneath —
+     * so both modes present the same silhouette regardless of which filters are visible.
      */
     private Div selectors() {
         projectSelector.setPlaceholder("Select a project");
@@ -184,14 +185,20 @@ public class VelocityView extends VerticalLayout {
         searchButton.setDisableOnClick(true);
         searchButton.addClickListener(e -> compute());
 
-        HorizontalLayout inputsRow = new HorizontalLayout(modeToggle, toolbarDivider(), projectSelector,
-                milestoneSelector, presetSelector, fromPicker, toPicker);
+        HorizontalLayout inputsRow = new HorizontalLayout(modeToggle, toolbarDivider(), projectSelector);
         inputsRow.setAlignItems(FlexComponent.Alignment.CENTER);
         inputsRow.setWidthFull();
         inputsRow.setSpacing(true);
         inputsRow.setPadding(false);
-        inputsRow.setFlexGrow(1, milestoneSelector);
         inputsRow.getStyle().set("flex-wrap", "wrap").set("gap", "12px");
+
+        HorizontalLayout filtersRow = new HorizontalLayout(milestoneSelector, presetSelector, fromPicker, toPicker);
+        filtersRow.setAlignItems(FlexComponent.Alignment.CENTER);
+        filtersRow.setWidthFull();
+        filtersRow.setSpacing(true);
+        filtersRow.setPadding(false);
+        filtersRow.setFlexGrow(1, milestoneSelector);
+        filtersRow.getStyle().set("flex-wrap", "wrap").set("gap", "12px");
 
         HorizontalLayout actionRow = new HorizontalLayout(searchButton, toolbarDivider(), unitToggle);
         actionRow.setAlignItems(FlexComponent.Alignment.CENTER);
@@ -199,7 +206,7 @@ public class VelocityView extends VerticalLayout {
         actionRow.setPadding(false);
         actionRow.getStyle().set("gap", "12px");
 
-        Div rows = new Div(inputsRow, actionRow);
+        Div rows = new Div(inputsRow, filtersRow, actionRow);
         rows.getStyle().set("display", "flex").set("flex-direction", "column").set("gap", "12px");
         return rows;
     }
