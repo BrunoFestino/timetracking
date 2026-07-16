@@ -75,6 +75,20 @@ public final class VelocityStyles {
         return state;
     }
 
+    /** A compact pill/chip {@link Span} with the given text and accent colour. */
+    public static Span pill(String text, String color) {
+        Span pill = new Span(text);
+        pill.getStyle()
+                .set("font-size", "11px")
+                .set("font-weight", "600")
+                .set("white-space", "nowrap")
+                .set("padding", "2px 7px")
+                .set("border-radius", "999px")
+                .set("border", "1px solid " + color)
+                .set("color", color);
+        return pill;
+    }
+
     /** A summary stat tile: big value on top, small uppercase label underneath. */
     public static Div kpiTile(String label, String value, boolean primary) {
         Span valueSpan = new Span(value);

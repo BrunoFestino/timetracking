@@ -324,7 +324,7 @@ public class VelocityView extends VerticalLayout {
         H4 header = new H4("Velocity");
         header.getStyle().set("margin", "0").set("color", DashboardStyle.EPIC).set("font-weight", "600");
 
-        Span unitChip = DashboardStyle.pill(
+        Span unitChip = VelocityStyles.pill(
                 unit == UnitToggle.Unit.MAN_DAYS ? "man-days" : "hours", DashboardStyle.SPENT);
 
         Div headerRow = new Div(header, unitChip);

@@ -75,13 +75,6 @@ public final class DashboardStyle {
             text = "On track";
             color = ON_TRACK;
         }
-        return pill(text, color);
-    }
-
-    /**
-     * Returns a compact pill/chip {@link Span} with the given text and accent colour.
-     */
-    public static Span pill(String text, String color) {
         Span pill = new Span(text);
         pill.getStyle()
                 .set("font-size", "11px")
