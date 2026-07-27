@@ -42,9 +42,46 @@ public record VelocityReport(
         return (int) Math.round(datable.stream().mapToInt(MilestoneVelocity::durationDays).average().orElse(0));
     }
 
+    /**
+     * Median calendar days to finish, over the datable milestones. Read next to
+     * {@link #avgDurationDays()}: when the two diverge, one unusually long or short milestone is
+     * pulling the average and the median is the more honest "typical" delivery time.
+     */
+    public int medianDurationDays() {
+        int[] sorted = datable().stream().mapToInt(MilestoneVelocity::durationDays).sorted().toArray();
+        if (sorted.length == 0) {
+            return 0;
+        }
+        int mid = sorted.length / 2;
+        return sorted.length % 2 == 1 ? sorted[mid] : (int) Math.round((sorted[mid - 1] + sorted[mid]) / 2.0);
+    }
+
     /** Average effort spent on a milestone of this selection. */
     public long avgSecondsPerMilestone() {
         return milestones.isEmpty() ? 0 : totalSeconds / milestones.size();
+    }
+
+    /** Milestones that carried a planned date — the ones on-time figures can be judged against. */
+    public List<MilestoneVelocity> planned() {
+        return milestones.stream().filter(MilestoneVelocity::hasPlan).toList();
+    }
+
+    /** How many planned milestones landed on or before their planned date. */
+    public int onTimeCount() {
+        return (int) planned().stream().filter(MilestoneVelocity::isOnTime).count();
+    }
+
+    /**
+     * Average schedule slip across the planned milestones, in calendar days (+late, −early).
+     * {@code 0} when no milestone carried a plan.
+     */
+    public int avgScheduleVarianceDays() {
+        List<MilestoneVelocity> planned = planned();
+        if (planned.isEmpty()) {
+            return 0;
+        }
+        return (int) Math.round(
+                planned.stream().mapToInt(MilestoneVelocity::scheduleVarianceDays).average().orElse(0));
     }
 
     /** The milestone that finished in the fewest days, if any is datable. */

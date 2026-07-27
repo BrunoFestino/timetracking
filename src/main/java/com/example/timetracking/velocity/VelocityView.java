@@ -20,6 +20,7 @@ import com.example.timetracking.views.MainLayout;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
+import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.combobox.MultiSelectComboBox;
 import com.vaadin.flow.component.dependency.StyleSheet;
 import com.vaadin.flow.component.html.Div;
@@ -42,10 +43,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
- * Delivery velocity: pick delivered milestones — from one project or several, of any type —
+ * Delivery velocity: pick a project, then the delivered milestones within it — of any type —
  * and compare how long each took to finish, both for the team and per person.
  */
 @Route(value = "velocity", layout = MainLayout.class)
@@ -57,7 +57,7 @@ public class VelocityView extends VerticalLayout {
     private final transient LoadDeliveredMilestonesUseCase loadDeliveredMilestonesUseCase;
     private final transient ComputeVelocityUseCase computeVelocityUseCase;
 
-    private final MultiSelectComboBox<JiraProject> projectSelector = new MultiSelectComboBox<>();
+    private final ComboBox<JiraProject> projectSelector = new ComboBox<>();
     private final MultiSelectComboBox<JiraTicket> milestoneSelector = new MultiSelectComboBox<>();
     private final Button searchButton = new Button("Search");
     private final UnitToggle unitToggle = new UnitToggle(unit -> this.render());
@@ -96,7 +96,7 @@ public class VelocityView extends VerticalLayout {
                 .set("font-weight", "700")
                 .set("margin", "0 0 2px 0");
 
-        Span subtitle = new Span("How long delivered milestones take to finish — across projects, by team and by person");
+        Span subtitle = new Span("How long delivered milestones take to finish — by team and by person");
         subtitle.getStyle().set("font-size", "14px").set("color", DashboardStyle.MUTED);
 
         Div header = new Div(title, subtitle);
@@ -124,17 +124,17 @@ public class VelocityView extends VerticalLayout {
     }
 
     /**
-     * Three toolbar rows: the projects to draw from, the delivered milestones to compare,
+     * Three toolbar rows: the project to draw from, the delivered milestones to compare,
      * then the action row (Search + effort unit).
      */
     private Div selectors() {
-        projectSelector.setPlaceholder("Select one or more projects");
+        projectSelector.setPlaceholder("Select a project");
         projectSelector.setWidth("380px");
         projectSelector.setItems(loadProjectsUseCase.loadProjects());
         projectSelector.setItemLabelGenerator(JiraProject::getLabel);
         projectSelector.addValueChangeListener(e -> loadDeliveredMilestones(e.getValue()));
 
-        milestoneSelector.setPlaceholder("Select projects first");
+        milestoneSelector.setPlaceholder("Select a project first");
         milestoneSelector.setEnabled(false);
         milestoneSelector.setWidthFull();
         milestoneSelector.getStyle().set("min-width", "0");
@@ -171,28 +171,25 @@ public class VelocityView extends VerticalLayout {
     }
 
     /**
-     * Rebuilds the milestone pool from every selected project. Only delivered milestones are
-     * offered — an unfinished milestone has no time-to-finish to compare — and they are pooled
-     * across projects on purpose, so a milestone of one project can sit next to another's.
+     * Rebuilds the milestone pool from the selected project. Only delivered milestones are
+     * offered — an unfinished milestone has no time-to-finish to compare — of any type, so
+     * milestones of different kinds within the project can be compared side by side.
      */
-    private void loadDeliveredMilestones(Set<JiraProject> projects) {
+    private void loadDeliveredMilestones(JiraProject project) {
         milestoneSelector.clear();
         milestoneSelector.setEnabled(false);
-        if (projects.isEmpty()) {
+        if (project == null) {
             milestoneSelector.setItems(List.of());
-            milestoneSelector.setPlaceholder("Select projects first");
+            milestoneSelector.setPlaceholder("Select a project first");
             return;
         }
         try {
-            List<JiraTicket> delivered = new ArrayList<>();
-            for (JiraProject project : projects) {
-                delivered.addAll(loadDeliveredMilestonesUseCase.loadDeliveredMilestones(project.key()));
-            }
+            List<JiraTicket> delivered = loadDeliveredMilestonesUseCase.loadDeliveredMilestones(project.key());
             milestoneSelector.setItems(delivered);
             if (delivered.isEmpty()) {
-                milestoneSelector.setPlaceholder("No delivered milestones in these projects");
+                milestoneSelector.setPlaceholder("No delivered milestones in this project");
             } else {
-                milestoneSelector.setPlaceholder("Select delivered milestones (any project, any type)");
+                milestoneSelector.setPlaceholder("Select delivered milestones (any type)");
                 milestoneSelector.setEnabled(true);
             }
         } catch (RuntimeException ex) {
@@ -249,12 +246,12 @@ public class VelocityView extends VerticalLayout {
 
         Div tileRow = new Div(
                 VelocityStyles.kpiTile("Avg time to deliver", days(report.avgDurationDays()), true),
-                VelocityStyles.kpiTile("Milestones", String.valueOf(report.milestones().size()), false),
-                VelocityStyles.kpiTile("Projects", String.valueOf(projectCount()), false),
-                VelocityStyles.kpiTile("Fastest", extreme(report.fastest().orElse(null)), false),
-                VelocityStyles.kpiTile("Slowest", extreme(report.slowest().orElse(null)), false),
-                VelocityStyles.kpiTile("Total effort", unit.format(report.totalSeconds()), false),
+                VelocityStyles.kpiTile("Median time to deliver", days(report.medianDurationDays()), false),
+                VelocityStyles.kpiTile("Range", range(), false),
+                VelocityStyles.kpiTile("On-time", onTime(), false),
+                VelocityStyles.kpiTile("Avg schedule slip", variance(), false),
                 VelocityStyles.kpiTile("Avg effort", unit.format(report.avgSecondsPerMilestone()), false),
+                VelocityStyles.kpiTile("Milestones", String.valueOf(report.milestones().size()), false),
                 VelocityStyles.kpiTile("Contributors", String.valueOf(report.contributors()), false));
         tileRow.addClassName(VelocityStyles.KPI_ROW_CLASS);
         tileRow.setWidthFull();
@@ -263,13 +260,37 @@ public class VelocityView extends VerticalLayout {
         return card;
     }
 
-    private int projectCount() {
-        return (int) report.milestones().stream().map(MilestoneVelocity::projectKey).distinct().count();
+    /** Fastest–slowest span in days, e.g. "12–37 d"; "—" when nothing is datable. */
+    private String range() {
+        MilestoneVelocity fastest = report.fastest().orElse(null);
+        MilestoneVelocity slowest = report.slowest().orElse(null);
+        if (fastest == null || slowest == null) {
+            return "—";
+        }
+        return fastest.durationDays() == slowest.durationDays()
+                ? fastest.durationDays() + " d"
+                : fastest.durationDays() + "–" + slowest.durationDays() + " d";
     }
 
-    /** "TTAR-9625 · 34 d" for the fastest/slowest tiles, "—" when nothing is datable. */
-    private String extreme(MilestoneVelocity milestone) {
-        return milestone == null ? "—" : milestone.key() + " · " + milestone.durationDays() + " d";
+    /** "3 of 5" delivered on or before plan; "—" when no milestone carried a planned date. */
+    private String onTime() {
+        int planned = report.planned().size();
+        return planned == 0 ? "—" : report.onTimeCount() + " of " + planned;
+    }
+
+    /** Average slip vs plan, e.g. "+3 d late" / "5 d early" / "on plan"; "—" without any plan. */
+    private String variance() {
+        if (report.planned().isEmpty()) {
+            return "—";
+        }
+        int slip = report.avgScheduleVarianceDays();
+        if (slip > 0) {
+            return "+" + slip + " d late";
+        }
+        if (slip < 0) {
+            return -slip + " d early";
+        }
+        return "on plan";
     }
 
     // ── tabs card ───────────────────────────────────────────────────────────────
@@ -346,6 +367,7 @@ public class VelocityView extends VerticalLayout {
 
             VerticalLayout body = subRows();
             body.add(DashboardStyle.note(windowNote(milestone)));
+            body.add(detailRow("Planned delivery", scheduleNote(milestone)));
             body.add(detailRow("Effort", unit.format(milestone.totalSpentSeconds())));
             body.add(detailRow("Effort per day open", unit.formatPerDay(milestone.secondsPerDay())));
             body.add(detailRow("Contributors", String.valueOf(milestone.contributors())));
@@ -444,14 +466,13 @@ public class VelocityView extends VerticalLayout {
     }
 
     /**
-     * Per-milestone detail for one person: what they put in, how long they stayed on it and how
-     * that compares with the milestone's own delivery window.
+     * Per-milestone detail for one person: what they put into each milestone and what share of
+     * the milestone's total effort that was — how much of each delivery they carried.
      */
     private VerticalLayout personBody(PersonVelocity person, Map<String, MilestoneVelocity> byKey,
                                       UnitToggle.Unit unit) {
         VerticalLayout body = subRows();
-        body.add(DashboardStyle.note("Avg " + unit.format(person.avgSecondsPerMilestone())
-                + " per milestone · avg " + days(person.avgEngagedDays()) + " engaged"));
+        body.add(DashboardStyle.note("Avg " + unit.format(person.avgSecondsPerMilestone()) + " per milestone"));
 
         for (PersonMilestoneEffort effort : person.milestones()) {
             MilestoneVelocity milestone = byKey.get(effort.milestoneKey());
@@ -460,7 +481,6 @@ public class VelocityView extends VerticalLayout {
             body.add(detailRow(
                     label(effort.milestoneKey(), name),
                     unit.format(effort.seconds())
-                            + " · " + days(effort.engagedDays()) + " engaged"
                             + " · " + share(effort.seconds(), milestoneTotal) + " of milestone"));
         }
         return body;
@@ -488,6 +508,18 @@ public class VelocityView extends VerticalLayout {
         return "Started " + date(milestone.startDate())
                 + " · delivered " + date(milestone.deliveryDate())
                 + " · " + days(milestone.durationDays());
+    }
+
+    /** "2026/02/01 · 9 days late" / "3 days early" / "on plan", or "no planned date" without a plan. */
+    private String scheduleNote(MilestoneVelocity milestone) {
+        if (!milestone.hasPlan()) {
+            return "no planned date";
+        }
+        int slip = milestone.scheduleVarianceDays();
+        String status = slip > 0 ? slip + " day" + (slip == 1 ? "" : "s") + " late"
+                : slip < 0 ? -slip + " day" + (slip == -1 ? "" : "s") + " early"
+                : "on plan";
+        return date(milestone.plannedDate()) + " · " + status;
     }
 
     private String date(LocalDate date) {

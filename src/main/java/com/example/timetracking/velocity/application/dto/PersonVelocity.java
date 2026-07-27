@@ -31,21 +31,6 @@ public record PersonVelocity(
         return milestones.isEmpty() ? 0 : totalSeconds / milestones.size();
     }
 
-    /**
-     * Average length of this person's engagement, over the milestones where it is datable.
-     * Read next to the milestone's own duration: a much shorter engagement means the person
-     * joined for part of the run rather than carrying it end to end.
-     */
-    public int avgEngagedDays() {
-        List<PersonMilestoneEffort> datable = milestones.stream()
-                .filter(effort -> effort.engagedDays() > 0)
-                .toList();
-        if (datable.isEmpty()) {
-            return 0;
-        }
-        return (int) Math.round(datable.stream().mapToInt(PersonMilestoneEffort::engagedDays).average().orElse(0));
-    }
-
     /** This person's effort on the given milestone (0 when they did not work on it). */
     public long effortOn(String milestoneKey) {
         return milestones.stream()

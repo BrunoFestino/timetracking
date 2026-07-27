@@ -51,15 +51,15 @@ public class VelocityAggregator {
             for (Worklog worklog : worklogs) {
                 String author = worklog.author() != null ? worklog.author() : UNKNOWN_AUTHOR;
                 long seconds = worklog.timeSpentSeconds();
-                LocalDate day = MilestoneDelivery.parseDate(worklog.startedDate());
 
                 milestoneSeconds += seconds;
                 secondsByPerson.merge(author, seconds, Long::sum);
-                people.computeIfAbsent(author, PersonAccumulator::new).add(tree.key(), seconds, day);
+                people.computeIfAbsent(author, PersonAccumulator::new).add(tree.key(), seconds);
             }
 
             LocalDate start = MilestoneDelivery.startDate(tree.metadata(), earliest(worklogs));
             LocalDate delivery = MilestoneDelivery.deliveryDate(tree.metadata(), latest(worklogs));
+            LocalDate planned = MilestoneDelivery.plannedDate(tree.metadata());
 
             totalSeconds += milestoneSeconds;
             perMilestone.add(new MilestoneVelocity(
@@ -70,6 +70,8 @@ public class VelocityAggregator {
                     start,
                     delivery,
                     MilestoneDelivery.durationDays(start, delivery),
+                    planned,
+                    MilestoneDelivery.scheduleVarianceDays(planned, delivery),
                     milestoneSeconds,
                     sortedByValueDesc(secondsByPerson)));
         }
@@ -124,56 +126,27 @@ public class VelocityAggregator {
                 .toList();
     }
 
-    /** Mutable per-person tally: effort per milestone plus the span of days worked on each. */
+    /** Mutable per-person tally: effort per milestone, in first-seen order. */
     private static final class PersonAccumulator {
 
         private final String name;
-        private final Map<String, MilestoneAccumulator> byMilestone = new LinkedHashMap<>();
+        private final Map<String, Long> secondsByMilestone = new LinkedHashMap<>();
         private long totalSeconds;
 
         private PersonAccumulator(String name) {
             this.name = name;
         }
 
-        private void add(String milestoneKey, long seconds, LocalDate day) {
+        private void add(String milestoneKey, long seconds) {
             totalSeconds += seconds;
-            byMilestone.computeIfAbsent(milestoneKey, MilestoneAccumulator::new).add(seconds, day);
+            secondsByMilestone.merge(milestoneKey, seconds, Long::sum);
         }
 
         private PersonVelocity toPersonVelocity() {
-            return new PersonVelocity(name, totalSeconds, byMilestone.values().stream()
-                    .map(MilestoneAccumulator::toEffort)
-                    .toList());
-        }
-    }
-
-    /** Mutable tally of one person on one milestone: effort and the days they worked on it. */
-    private static final class MilestoneAccumulator {
-
-        private final String milestoneKey;
-        private long seconds;
-        private LocalDate firstDay;
-        private LocalDate lastDay;
-
-        private MilestoneAccumulator(String milestoneKey) {
-            this.milestoneKey = milestoneKey;
-        }
-
-        private void add(long addedSeconds, LocalDate day) {
-            seconds += addedSeconds;
-            if (day == null) {
-                return;
-            }
-            if (firstDay == null || day.isBefore(firstDay)) {
-                firstDay = day;
-            }
-            if (lastDay == null || day.isAfter(lastDay)) {
-                lastDay = day;
-            }
-        }
-
-        private PersonMilestoneEffort toEffort() {
-            return new PersonMilestoneEffort(milestoneKey, seconds, firstDay, lastDay);
+            List<PersonMilestoneEffort> efforts = secondsByMilestone.entrySet().stream()
+                    .map(entry -> new PersonMilestoneEffort(entry.getKey(), entry.getValue()))
+                    .toList();
+            return new PersonVelocity(name, totalSeconds, efforts);
         }
     }
 }
