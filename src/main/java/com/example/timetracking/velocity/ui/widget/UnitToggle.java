@@ -29,8 +29,9 @@ public class UnitToggle extends Tabs {
 
         public abstract String format(long seconds);
 
-        public String formatPerWeek(long secondsPerWeek) {
-            return format(secondsPerWeek) + "/week";
+        /** Effort spread over the days a milestone was open, e.g. {@code "1.4 MD/day"}. */
+        public String formatPerDay(long secondsPerDay) {
+            return format(secondsPerDay) + "/day";
         }
     }
 

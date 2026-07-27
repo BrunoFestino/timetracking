@@ -1,43 +1,57 @@
 package com.example.timetracking.velocity.application.dto;
 
-import java.util.Map;
+import java.util.List;
 
 /**
- * Weekly velocity of one team member, broken down by milestone. Each milestone the
- * person contributed to keeps its own relative-week map (week 1 = that milestone's
- * start), so weekly rows can be labelled with the milestone's real calendar dates.
+ * One team member's record across the selected delivered milestones: what they put into each
+ * one and how long they stayed on it. This is the "compare by person" half of the view — the
+ * per-milestone entries let two people be compared on the same milestone, and the aggregates
+ * let a person be compared with themselves across milestones and projects.
  *
- * @param name                 contributor display name
- * @param totalSeconds         time logged across all selected milestones
- * @param secondsByMilestoneWeek milestone key → relative week → seconds, in selection order
+ * @param name       contributor display name
+ * @param totalSeconds effort logged across every selected milestone
+ * @param milestones per-milestone participation, in selection order
  */
 public record PersonVelocity(
         String name,
         long totalSeconds,
-        Map<String, Map<Integer, Long>> secondsByMilestoneWeek) {
+        List<PersonMilestoneEffort> milestones) {
 
-    /** Sum, per milestone, of the highest relative week worked (min 1); gap weeks count as zero. */
-    public int totalActiveWeeks() {
-        int sum = secondsByMilestoneWeek.values().stream()
-                .mapToInt(w -> w.keySet().stream().mapToInt(Integer::intValue).max().orElse(0))
-                .sum();
-        return Math.max(1, sum);
+    public PersonVelocity {
+        milestones = milestones == null ? List.of() : List.copyOf(milestones);
     }
 
-    /** Personal weekly velocity: average of the weekly values shown for this person. */
-    public long avgSecondsPerWeek() {
-        return totalSeconds / totalActiveWeeks();
+    /** Delivered milestones this person logged work on. */
+    public int milestonesParticipated() {
+        return milestones.size();
     }
 
-    /** Highest relative week the person worked within the given milestone (0 if none). */
-    public int observedWeeksInMilestone(String key) {
-        return secondsByMilestoneWeek.getOrDefault(key, Map.of())
-                .keySet().stream().mapToInt(Integer::intValue).max().orElse(0);
+    /** Average effort this person put into a milestone of the selection. */
+    public long avgSecondsPerMilestone() {
+        return milestones.isEmpty() ? 0 : totalSeconds / milestones.size();
     }
 
-    /** Total seconds the person logged on the given milestone. */
-    public long milestoneTotal(String key) {
-        return secondsByMilestoneWeek.getOrDefault(key, Map.of())
-                .values().stream().mapToLong(Long::longValue).sum();
+    /**
+     * Average length of this person's engagement, over the milestones where it is datable.
+     * Read next to the milestone's own duration: a much shorter engagement means the person
+     * joined for part of the run rather than carrying it end to end.
+     */
+    public int avgEngagedDays() {
+        List<PersonMilestoneEffort> datable = milestones.stream()
+                .filter(effort -> effort.engagedDays() > 0)
+                .toList();
+        if (datable.isEmpty()) {
+            return 0;
+        }
+        return (int) Math.round(datable.stream().mapToInt(PersonMilestoneEffort::engagedDays).average().orElse(0));
+    }
+
+    /** This person's effort on the given milestone (0 when they did not work on it). */
+    public long effortOn(String milestoneKey) {
+        return milestones.stream()
+                .filter(effort -> effort.milestoneKey().equals(milestoneKey))
+                .mapToLong(PersonMilestoneEffort::seconds)
+                .findFirst()
+                .orElse(0L);
     }
 }

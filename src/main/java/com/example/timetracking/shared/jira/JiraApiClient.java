@@ -12,6 +12,12 @@ public interface JiraApiClient {
 
     JiraSearchResponseDto searchMilestonesByProject(String projectKey);
 
+    /**
+     * Same milestones as {@link #searchMilestonesByProject(String)}, but with the status and
+     * lifecycle-date fields needed to tell delivered milestones apart and to date their delivery.
+     */
+    JiraSearchResponseDto searchMilestonesWithDeliveryByProject(String projectKey);
+
     JiraSearchResponseDto searchEpicsByMilestone(String porjectKey, String milestoneKey);
 
     JiraSearchResponseDto searchIssuesByEpic(String projectKey, String epicKey);

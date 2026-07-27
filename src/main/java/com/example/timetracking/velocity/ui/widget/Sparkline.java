@@ -7,15 +7,15 @@ import com.vaadin.flow.component.html.Div;
 import java.util.List;
 
 /**
- * A compact weekly-trend chart: one vertical bar per week, height proportional to the
- * effort logged that week. Shows the shape of a milestone's velocity (ramp-up, peak,
- * tail-off) at a glance. The peak week is emphasised in the primary navy; weeks without
- * work render as a low neutral stub so "zero" reads distinctly from a layout gap.
+ * A compact distribution chart: one vertical bar per item, height proportional to its value.
+ * Used to show how a person's effort spreads over the selected milestones at a glance. The
+ * largest bar is emphasised in the primary navy; a zero value renders as a low neutral stub
+ * so "nothing here" reads distinctly from a layout gap.
  */
 public class Sparkline extends Div {
 
     /**
-     * @param values   effort per relative week, in order 1..N (seconds)
+     * @param values   one value per bar, in display order (seconds)
      * @param tooltips per-bar hover text, same size and order as {@code values}
      * @param color    bar colour
      */

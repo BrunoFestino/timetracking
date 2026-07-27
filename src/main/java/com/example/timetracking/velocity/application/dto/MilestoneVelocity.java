@@ -1,33 +1,61 @@
 package com.example.timetracking.velocity.application.dto;
 
 import java.time.LocalDate;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Velocity figures for a single milestone.
+ * How long one delivered milestone took, and what it cost.
+ *
+ * <p>Milestones from different projects are directly comparable: the figures below describe
+ * the milestone's own delivery window, with no dependency on the calendar or on the rest of
+ * the selection.
  *
  * @param key               Jira key, e.g. {@code TTAR-9625}
  * @param name              milestone summary
- * @param totalSpentSeconds time logged on the whole milestone tree
- * @param durationWeeks     planned milestone duration in weeks (min 1), informational
- * @param startDate         resolved start (start-date field, else earliest worklog); may be null
- * @param secondsByWeek     time logged per relative week (week 1 = milestone start)
+ * @param projectKey        owning project key, so cross-project selections stay readable
+ * @param type              Jira issue type, kept for display only — milestones of any type compare
+ * @param startDate         start of the delivery window (start-date field, else first worklog)
+ * @param deliveryDate      actual delivery (effective delivery date, else resolution, else last worklog)
+ * @param durationDays      inclusive calendar days from start to delivery; {@code 0} when unknown
+ * @param totalSpentSeconds effort logged on the whole milestone tree
+ * @param secondsByPerson   effort per contributor, ordered by effort desc
  */
 public record MilestoneVelocity(
         String key,
         String name,
-        long totalSpentSeconds,
-        int durationWeeks,
+        String projectKey,
+        String type,
         LocalDate startDate,
-        Map<Integer, Long> secondsByWeek) {
+        LocalDate deliveryDate,
+        int durationDays,
+        long totalSpentSeconds,
+        Map<String, Long> secondsByPerson) {
 
-    /** Highest relative week with logged work (min 1); weeks without logs count as zero. */
-    public int observedWeeks() {
-        return secondsByWeek.keySet().stream().mapToInt(Integer::intValue).max().orElse(1);
+    public MilestoneVelocity {
+        // LinkedHashMap rather than Map.copyOf: the effort-desc order is part of the contract.
+        secondsByPerson = secondsByPerson == null
+                ? Map.of()
+                : Collections.unmodifiableMap(new LinkedHashMap<>(secondsByPerson));
     }
 
-    /** Weekly velocity: average of the weekly values over the observed weeks. */
-    public long avgSecondsPerWeek() {
-        return totalSpentSeconds / observedWeeks();
+    /** Whether start and delivery are both known, i.e. the duration figures are meaningful. */
+    public boolean hasDuration() {
+        return durationDays > 0;
+    }
+
+    /** People who logged work on this milestone. */
+    public int contributors() {
+        return secondsByPerson.size();
+    }
+
+    /**
+     * Delivery intensity: effort spread over the calendar days the milestone was open.
+     * Two milestones of the same duration but different intensity mean different team sizes
+     * or different amounts of idle time.
+     */
+    public long secondsPerDay() {
+        return hasDuration() ? totalSpentSeconds / durationDays : 0;
     }
 }

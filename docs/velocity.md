@@ -1,6 +1,6 @@
-# Feature: Velocity (velocidad del equipo)
+# Feature: Velocity (velocidad de entrega)
 
-Vista **Team Velocity** de la app de time-tracking (ruta `/velocity`, tercer ítem del menú lateral). Este documento tiene dos partes: una explicación **no técnica** (qué es, cómo usarla y cómo leer los números) y una explicación **técnica** (arquitectura, cálculo y performance).
+Vista **Delivery Velocity** de la app de time-tracking (ruta `/velocity`, tercer ítem del menú lateral). Este documento tiene dos partes: una explicación **no técnica** (qué es, cómo usarla y cómo leer los números) y una explicación **técnica** (arquitectura, cálculo y performance).
 
 ---
 
@@ -8,63 +8,45 @@ Vista **Team Velocity** de la app de time-tracking (ruta `/velocity`, tercer ít
 
 ### Qué es y qué mide
 
-La velocity responde una pregunta simple: **¿cuánto trabajo registra el equipo por semana?**
+La velocity responde una pregunta simple: **¿cuánto tarda el equipo en terminar un milestone?**
 
-A diferencia de la "velocity" clásica de Scrum, acá **no se usan story points ni cantidad de tickets cerrados**. La medida es el **tiempo registrado en los worklogs de Jira**: cada vez que alguien loguea horas en un ticket, ese esfuerzo cuenta para la semana en la que se hizo el trabajo. La vista suma ese esfuerzo, lo agrupa por semana y lo promedia.
+A diferencia de la "velocity" clásica de Scrum, acá **no se usan story points, ni cantidad de tickets cerrados, ni un ritmo semanal**. La medida es el **tiempo de entrega**: para cada milestone ya entregado, los días de calendario que pasaron entre su arranque y su entrega efectiva. Al lado de ese tiempo se muestra el **esfuerzo** que costó (los worklogs de Jira, en man-days u horas), para distinguir "tardó mucho" de "costó mucho".
 
-Los valores se muestran en **man-days (MD)** o en **horas**, según el toggle **MD / Hours** de la parte superior. Cambiar la unidad solo cambia cómo se muestran los números, no el cálculo.
+La vista solo trabaja con **milestones entregados (delivered)**: un milestone en curso todavía no tiene tiempo de entrega que comparar.
+
+### Comparar milestones de proyectos distintos
+
+La selección **no está atada a un proyecto**. Se pueden elegir varios proyectos y armar una selección mezclada — un milestone del proyecto X y otro del proyecto Y — y tampoco importa que sean del mismo **tipo** de milestone. Cada milestone se mide contra **su propia ventana de entrega** (arranque → entrega), nunca contra el calendario, así que dos milestones que corrieron en momentos distintos siguen siendo comparables lado a lado.
 
 ### Qué preguntas de negocio responde
 
-- **¿Cuál es el ritmo semanal sostenible del equipo?** El número principal ("Team velocity") es el promedio de esfuerzo por semana.
-- **¿Cómo evoluciona un milestone?** El sparkline (mini gráfico de barras) en el encabezado de cada milestone muestra si está arrancando, en su pico o terminando.
-- **¿Qué semanas estuvieron por encima o por debajo del promedio?** El gráfico de barras semanal trae una línea punteada con el promedio, para leerlo de un vistazo.
-- **¿Quién trabajó, cuánto y en qué?** Cada semana se puede expandir para ver el esfuerzo por persona y la lista de issues trabajados esa semana.
+- **¿Cuánto tarda en promedio un milestone en terminarse?** El número principal ("Avg time to deliver") es el promedio de días de los milestones seleccionados.
+- **¿Cuál se entregó más rápido y cuál más lento?** Las tarjetas "Fastest" / "Slowest" y el gráfico de barras, que ordena visualmente la selección con una línea punteada en el promedio.
+- **¿Terminar rápido salió caro?** Cada milestone muestra su esfuerzo total y su **esfuerzo por día abierto** (intensidad): dos milestones de la misma duración con intensidades distintas implican equipos de tamaño distinto o tiempo muerto.
+- **¿Quién participó de cada entrega, con cuánto esfuerzo y por cuánto tiempo?** El tab "Per person" desglosa la misma selección por persona.
 
 ### Cómo usar la pantalla
 
-La vista tiene dos modos, que se eligen con el toggle de arriba a la izquierda:
+1. Elegir **uno o más proyectos**.
+2. Seleccionar **uno o más milestones entregados** del pool combinado (aparecen los de todos los proyectos elegidos).
+3. Presionar **Search**.
 
-#### Modo "Per milestone" (por milestone)
-
-Compara milestones entre sí, alineando sus arranques.
-
-1. Elegir un **proyecto**.
-2. Seleccionar **uno o más milestones**.
-3. Presionar **Compute**.
-
-Las semanas son **relativas al inicio de cada milestone**: la "Week 1" de cada milestone es su primera semana de vida, así se puede comparar el ramp-up de milestones distintos lado a lado.
+El toggle **MD / Hours** de la toolbar cambia solo cómo se muestra el **esfuerzo**; las duraciones siempre van en días. Cambiar la unidad no recalcula nada, solo re-renderiza.
 
 Qué muestra:
 
-- **Tarjeta de resumen del equipo**: cantidad de milestones, contribuidores, total registrado, semanas activas, la **Team velocity** (MD por semana) y la velocity por contribuidor.
-- **Tab "Team velocity"**: una sección colapsable por milestone, con su sparkline de tendencia semanal y el total / promedio por semana. Al expandir, se ve cada semana relativa (por ej. "Week 1 (Jul 6 – Jul 12)") con su esfuerzo.
-- **Tab "Per person"**: lo mismo pero desglosado por persona, y dentro de cada persona por milestone y semana.
-
-#### Modo "Per week" (por semana calendario)
-
-Mira el proyecto completo sobre la línea de tiempo real.
-
-1. Elegir un **proyecto**.
-2. Definir un **rango de fechas** con los date pickers, o usar un preset **"Last N weeks"** (4, 8 o 12 semanas).
-3. Presionar **Compute**.
-
-Acá las semanas son **semanas calendario reales, de lunes a domingo**, y se agrega todo el proyecto (no hay selección de milestones).
-
-Qué muestra:
-
-- **Tarjeta de resumen del equipo**: rango, semanas del rango, contribuidores, total registrado y Team velocity.
-- **Tab "Team velocity"**: un **gráfico de barras** con una barra por semana (el valor arriba de cada barra, el lunes de la semana abajo) y una **línea punteada con el promedio** ("avg X MD/week"). Debajo, una sección colapsable por semana con el esfuerzo por persona y **todos los issues trabajados esa semana**.
-- **Tab "Per person"**: por cada persona, un sparkline sobre el rango y su desglose semanal.
+- **Tarjeta de resumen del equipo**: tiempo promedio de entrega, cantidad de milestones y de proyectos involucrados, el más rápido y el más lento, esfuerzo total y promedio por milestone, y cantidad de contribuidores.
+- **Tab "By milestone"**: un **gráfico de barras** con los días de cada milestone (la clave abajo de cada barra) y una **línea punteada con el promedio**. Debajo, una sección colapsable por milestone con sus fechas de arranque y entrega, su duración, su esfuerzo, su intensidad y el esfuerzo de cada persona con su porcentaje.
+- **Tab "Per person"**: una sección colapsable por persona, con un mini gráfico del reparto de su esfuerzo entre los milestones seleccionados y, al expandir, cuánto puso en cada milestone, **cuántos días estuvo enganchada** (de su primer a su último worklog en ese milestone) y qué porcentaje del milestone representó.
 
 ### Cómo leer los números sin malinterpretarlos
 
-- **El rango se redondea a semanas completas.** En modo Per week, la fecha "desde" se lleva al lunes de su semana y la "hasta" al domingo. El promedio nunca divide por una semana parcial, así que la última semana no "baja" el promedio artificialmente por estar incompleta.
-- **"Per contributor" es un reparto parejo, no un promedio individual.** Es la velocity del equipo dividida por la cantidad de personas que registraron tiempo; no refleja el ritmo real de cada persona (para eso está el tab "Per person").
-- **Solo cuenta lo que se registra.** Si el equipo no loguea horas en Jira, la velocity se subestima. La calidad del dato depende de la disciplina de registro de worklogs.
-- **Las semanas sin registro cuentan como cero.** En Per week, una semana sin worklogs aparece como columna vacía y sí baja el promedio: es deliberado, porque una semana sin trabajo registrado es información.
-- **Los datos pueden tener hasta ~5 minutos de atraso.** La app cachea los datos de Jira y limpia la cache cada 5 minutos.
-- **En Per milestone, mezclar milestones muy distintos distorsiona el promedio.** Ver la sección de limitaciones en la parte técnica.
+- **La duración es tiempo de calendario, no esfuerzo.** Un milestone de 40 días puede haber tenido 5 días de trabajo real: los días incluyen fines de semana, esperas y pausas. Para el trabajo real está la columna de esfuerzo.
+- **"Días enganchada" de una persona no es la duración del milestone.** Es el lapso entre su primer y su último worklog en ese milestone; si es mucho menor que la duración, esa persona entró para un tramo y no acompañó toda la entrega.
+- **Un milestone sin fechas no promedia.** Si no se puede establecer arranque o entrega, se muestra "n/a" y queda afuera del promedio, del más rápido y del más lento (no cuenta como cero).
+- **Solo cuenta lo que se registra.** El esfuerzo depende de la disciplina de carga de worklogs en Jira; el tiempo de entrega no, porque sale de las fechas del milestone.
+- **Solo cuenta el trabajo dentro del árbol del milestone** (milestone → epics → issues → subtasks). Trabajo logueado fuera de esa jerarquía no aparece.
+- **Los datos pueden tener hasta ~5 minutos de atraso.** La app cachea los árboles de milestone de Jira y limpia la cache cada 5 minutos.
 
 ---
 
@@ -77,123 +59,112 @@ El feature vive en `src/main/java/com/example/timetracking/velocity/`, con capas
 | Capa | Contenido |
 |---|---|
 | `velocity/` (raíz) | `VelocityView` — la única ruta Vaadin del feature |
-| `application/usecase/` | `ComputeVelocityUseCase`, `ComputeWeeklyVelocityUseCase` — orquestación |
-| `application/mapper/` | `VelocityAggregator`, `WeeklyVelocityAggregator` — cálculo puro, sin dependencias de Jira ni de UI |
-| `application/dto/` | Records inmutables: `VelocityReport`, `MilestoneVelocity`, `PersonVelocity`, `WeeklyVelocityReport`, `CalendarWeekVelocity`, `PersonWeeklyVelocity`, `IssueEffort` |
-| `ui/widget/` | Widgets de CSS puro: `WeeklyBarChart`, `Sparkline`, `ModeToggle`, `UnitToggle`, `CollapsibleSection` |
+| `application/usecase/` | `LoadDeliveredMilestonesUseCase` (qué se puede elegir), `ComputeVelocityUseCase` (orquestación del cálculo) |
+| `application/mapper/` | `MilestoneDelivery` (reglas de entrega), `VelocityAggregator` — cálculo puro, sin dependencias de Jira ni de UI |
+| `application/dto/` | Records inmutables: `VelocityReport`, `MilestoneVelocity`, `PersonVelocity`, `PersonMilestoneEffort` |
+| `ui/widget/` | Widgets de CSS puro: `ComparisonBarChart`, `Sparkline`, `UnitToggle`, `CollapsibleSection` |
 
 Dirección de dependencias: `velocity` depende del feature `milestone` (loaders, dominio, estilos) y de `shared/jira`; **nada depende de velocity**. Es una capa de solo lectura/analítica sobre los mismos datos de Jira que usa la vista Milestone.
 
-Convención central: **todo el esfuerzo se guarda en segundos** (`Worklog.timeSpentSeconds()`); la UI convierte a MD u horas al renderizar según `UnitToggle`.
+Convención central: **todo el esfuerzo se guarda en segundos** (`Worklog.timeSpentSeconds()`) y **toda duración se guarda en días de calendario**; la UI convierte el esfuerzo a MD u horas al renderizar según `UnitToggle`.
 
 ### Flujo de datos
 
 ```
 VelocityView (@Route "velocity")
-    │  compute() despacha según ModeToggle.Mode
-    ├── PER_MILESTONE → ComputeVelocityUseCase ──────→ VelocityAggregator ──→ VelocityReport
-    └── PER_WEEK      → ComputeWeeklyVelocityUseCase → WeeklyVelocityAggregator → WeeklyVelocityReport
-                              │
-                              └── LoadMilestoneDetailsUseCase.loadByKey (feature milestone, @Cacheable)
-                                      └── JiraApiClient (milestone → epics → issues → subtasks)
+    ├── selección de proyectos → LoadDeliveredMilestonesUseCase.loadDeliveredMilestones(projectKey)
+    │        └── JiraApiClient.searchMilestonesWithDeliveryByProject  (+ filtro MilestoneDelivery.isDelivered)
+    └── Search → ComputeVelocityUseCase.execute(milestoneKeys) → VelocityAggregator → VelocityReport
+                     └── LoadMilestoneDetailsUseCase.loadByKey (feature milestone, @Cacheable)
+                             └── JiraApiClient (milestone → epics → issues → subtasks)
 ```
 
-La fuente de datos es el árbol de milestone del feature `milestone`: cada `JiraTicket` trae sus `worklogs()` y sus `children()`, construido recursivamente por `LoadMilestoneDetailsUseCase.loadByKey`.
+La fuente de datos es el árbol de milestone del feature `milestone`: cada `JiraTicket` trae sus `worklogs()` y sus `children()`, construido recursivamente por `LoadMilestoneDetailsUseCase.loadByKey`. Las claves de milestone del compute pueden pertenecer a proyectos distintos: cada árbol se carga por su propia clave, sin ningún parámetro de proyecto.
+
+### Qué cuenta como "delivered"
+
+Concentrado en `MilestoneDelivery`, para que el selector y el aggregator no puedan discrepar:
+
+```java
+// MilestoneDelivery.isDelivered
+return parseDate(metadata.effectiveDeliveryDate()) != null || hasDeliveredStatus(metadata);
+```
+
+- **Entregado** si tiene *effective delivery date* (`customfield_13445`), o si su status es terminal (`delivered`, `done`, `closed`, `resolved`, `completed`, `finished`, `released`).
+- **Fecha de entrega** (`deliveryDate`): effective delivery date → `resolutiondate` → último worklog.
+- **Fecha de arranque** (`startDate`): el custom field de start date (`customfield_15030`) → primer worklog.
+- Las fechas **planificadas** (`dueDate`, `baselineDeliveryDate`) nunca se usan como fecha de entrega: dicen cuándo *debía* entregarse, no cuándo se entregó.
+
+El tipo de milestone **no se filtra**: cualquier milestone entregado entra en la comparación.
 
 ### El cálculo
 
-**Atribución a semanas: por la fecha `started` del worklog** (no por fecha de resolución del ticket). Ambos aggregators parsean los primeros 10 caracteres (`yyyy-MM-dd`) con `LocalDate.parse`; una fecha inválida se descarta (per-week) o cae en la semana 1 (per-milestone).
-
-#### Modo Per milestone — `VelocityAggregator`
-
-Las semanas son relativas al inicio de cada milestone. El inicio es el custom field `startDate`, con fallback al worklog más temprano (`startOf`). El bucketing:
+#### Duración — `VelocityAggregator` + `MilestoneDelivery`
 
 ```java
-// VelocityAggregator.weekOf — semana 1 arranca en el inicio del milestone
-private int weekOf(LocalDate start, String worklogDate) {
-    LocalDate date = parseDate(worklogDate);
-    if (start == null || date == null || date.isBefore(start)) {
-        return 1;
-    }
-    return (int) (ChronoUnit.DAYS.between(start, date) / 7) + 1;
+// MilestoneDelivery.durationDays — días de calendario, inclusive
+if (start == null || delivery == null || delivery.isBefore(start)) {
+    return 0;   // sin ventana medible
 }
+return (int) (delivery.toEpochDay() - start.toEpochDay()) + 1;
 ```
 
-La velocity del equipo divide el total por `teamObservedWeeks`, la **semana relativa más alta observada en toda la selección**:
+Un `durationDays == 0` significa "no medible" y la UI lo muestra como `n/a`.
+
+#### Cifras de equipo — `VelocityReport`
 
 ```java
-// VelocityAggregator.aggregate
-teamObservedWeeks = Math.max(teamObservedWeeks, week);   // dentro del loop de worklogs
-...
-teamObservedWeeks > 0 ? totalSeconds / teamObservedWeeks : 0   // teamAvgSecondsPerWeek
+// VelocityReport.avgDurationDays — el promedio ignora lo no medible
+List<MilestoneVelocity> datable = datable();   // milestones con hasDuration()
+return (int) Math.round(datable.stream().mapToInt(MilestoneVelocity::durationDays).average().orElse(0));
 ```
 
-#### Modo Per week — `ComputeWeeklyVelocityUseCase` + `WeeklyVelocityAggregator`
+`fastest()` / `slowest()` son el mín/máx sobre esa misma lista `datable()`. `avgSecondsPerMilestone()` sí divide por **todos** los milestones seleccionados, porque el esfuerzo se conoce aunque las fechas no.
 
-El use case **redondea el rango hacia afuera a semanas completas**, para que el denominador nunca sea una semana parcial:
+`MilestoneVelocity.secondsPerDay()` es la intensidad: esfuerzo / días abiertos.
+
+#### Cifras por persona — `PersonVelocity` + `PersonMilestoneEffort`
+
+Por cada persona y cada milestone se acumulan segundos y el **primer y último día con worklog** de esa persona en ese milestone:
 
 ```java
-// ComputeWeeklyVelocityUseCase.execute
-LocalDate snappedFrom = from.with(DayOfWeek.MONDAY);
-LocalDate snappedTo = to.with(DayOfWeek.SUNDAY);
+// PersonMilestoneEffort.engagedDays
+if (firstDay == null || lastDay == null || lastDay.isBefore(firstDay)) {
+    return 0;
+}
+return (int) (lastDay.toEpochDay() - firstDay.toEpochDay()) + 1;
 ```
 
-El aggregator agrupa por el lunes de la semana calendario de cada worklog, filtrando lo que cae fuera del rango, y **deduplica tickets alcanzables desde más de un árbol de milestone** con un set `seenTickets`:
-
-```java
-// WeeklyVelocityAggregator.collect
-if (seenTickets.add(ticket.key())) {
-    for (Worklog worklog : ticket.worklogs()) {
-        LocalDate date = parseDate(worklog.startedDate());
-        if (date == null || date.isBefore(from) || date.isAfter(to)) {
-            continue;
-        }
-        LocalDate weekStart = date.with(DayOfWeek.MONDAY);
-        ...
-        teamByWeek.merge(weekStart, seconds, Long::sum);
-```
-
-El denominador y la velocity:
-
-```java
-// WeeklyVelocityAggregator.aggregate
-int weeksInRange = (int) ((to.toEpochDay() - from.toEpochDay() + 1) / 7);
-...
-weeksInRange > 0 ? totalSeconds / weeksInRange : 0   // teamAvgSecondsPerWeek
-```
-
-Las semanas sin trabajo **se mantienen como columnas en cero** (`weeks()` itera `from.plusWeeks(i)` para las `weeksInRange` semanas), así el timeline no tiene huecos y las semanas vacías pesan en el promedio.
-
-#### Cifras derivadas (ambos reports)
-
-- `perContributorSecondsPerWeek = teamAvgSecondsPerWeek / contributors()` — reparto parejo, no promedio individual (`VelocityReport`, `WeeklyVelocityReport`).
-- La **línea de promedio** del gráfico y el número "Team velocity" son el mismo valor: `teamAvgSecondsPerWeek`.
+`avgEngagedDays()` promedia solo los milestones donde ese lapso es datable. El aggregator **deduplica tickets alcanzables desde más de un milestone seleccionado** con un set `seenTickets`, atribuyéndolos al primer milestone que los alcanza.
 
 ### UI: gráficos sin librería de charts
 
 Todos los gráficos son **divs con CSS puro**, sin librería externa:
 
-- **`WeeklyBarChart`**: área de 140 px con barras que escalan dentro de 118 px (`BAR_AREA_PX`, deja lugar al valor arriba de cada barra). La escala usa `max(avgSeconds, máximo de las columnas)` para que la línea de promedio siempre entre en el gráfico. La línea es un `Div` absoluto con `border-top: 1px dashed` en `bottom = round(avgSeconds * 118 / max)` px, con su etiqueta ("avg X MD/week") a la derecha.
-- **`Sparkline`**: flexbox de barras finitas, altura porcentual sobre el máximo, tooltip por barra.
-- **`ModeToggle` / `UnitToggle`**: wrappers finos sobre `Tabs` de Vaadin. Cambiar de unidad solo re-renderiza; los reports ya computados no se recalculan.
-- **`CollapsibleSection`**: secciones expandibles de milestone/semana/persona (copia local del widget, movida desde el feature milestone).
+- **`ComparisonBarChart`**: área de 140 px con una barra por milestone que escala dentro de 118 px (`BAR_AREA_PX`, deja lugar al valor arriba de cada barra). La escala usa `max(promedio, máximo de las columnas)` para que la línea de promedio siempre entre en el gráfico. La línea es un `Div` absoluto con `border-top: 1px dashed` en `bottom = round(avg * 118 / max)` px, con su etiqueta ("avg N days") a la derecha. Una columna sin duración medible conserva su lugar con la etiqueta `n/a` y sin barra.
+- **`Sparkline`**: flexbox de barras finitas, altura porcentual sobre el máximo, tooltip por barra. En el tab "Per person" muestra el reparto del esfuerzo de esa persona entre los milestones seleccionados.
+- **`UnitToggle`**: wrapper fino sobre `Tabs` de Vaadin. Cambiar de unidad solo re-renderiza; el report ya computado no se recalcula.
+- **`CollapsibleSection`**: secciones expandibles de milestone y de persona (copia local del widget, movida desde el feature milestone).
 
 ### Datos, caching y paralelismo
 
 - **Cache**: `LoadMilestoneDetailsUseCase.loadByKey` es `@Cacheable(MILESTONE_TREE_CACHE)` con key = clave del milestone, sobre un `ConcurrentMapCacheManager` (`shared/config/CacheConfig`). Un job programado (`MilestonesCacheEviction`, cron `0 */5 * * * *`) evicta **todas** las entradas cada 5 minutos para mantener frescura. Abrir la vista Milestone primero calienta la cache que velocity después reutiliza.
-- **Carga paralela (Per week)**: como el modo Per week carga el árbol de *todos* los milestones del proyecto y la evicción de 5 minutos hace que la mayoría de los computes sean cold-load, `ComputeWeeklyVelocityUseCase.loadTreesInParallel` submitea cada `loadByKey` a un pool fijo acotado (`PARALLEL_LOADS = 6`, moderado para respetar rate limits de Jira), preservando el orden de submission. El wall time queda en ~el batch más lento en vez de la suma de todos los milestones. Si un milestone falla, falla el compute completo (mismo comportamiento que la versión secuencial). Como se invoca el bean inyectado (proxy de Spring), `@Cacheable` sigue aplicando dentro del pool.
-- **Validación**: `ComputeVelocityUseCase` valida las claves de milestone contra `^[A-Z][A-Z0-9_]+-\d+$`; el weekly valida que el rango exista y que `to >= from`.
+- **Carga paralela**: cada árbol de milestone son varias llamadas encadenadas a Jira y la evicción de 5 minutos hace que la mayoría de los computes sean cold-load, así que `ComputeVelocityUseCase.loadTreesInParallel` submitea cada `loadByKey` a un pool fijo acotado (`PARALLEL_LOADS = 6`, moderado para respetar rate limits de Jira), preservando el orden de submission. El wall time queda en ~el batch más lento en vez de la suma de todos los milestones. Si un milestone falla, falla el compute completo. Como se invoca el bean inyectado (proxy de Spring), `@Cacheable` sigue aplicando dentro del pool.
+- **Listado de milestones**: `searchMilestonesWithDeliveryByProject` es una búsqueda por proyecto (una por proyecto seleccionado) que trae status y fechas de ciclo de vida además del summary; el filtro de entregados corre en memoria, así que no depende de adivinar nombres de status en el JQL.
+- **Validación**: `ComputeVelocityUseCase` valida las claves de milestone contra `^[A-Z][A-Z0-9_]+-\d+$`.
 
 ### Limitaciones y decisiones de modelado conocidas
 
-- **Denominador en Per milestone**: la velocity de equipo divide por la semana relativa más alta observada en *toda* la selección. Si se mezclan milestones de duraciones muy distintas, el más largo domina el denominador y la velocity combinada puede quedar **subestimada** (no es un promedio ponderado por milestone). Es una decisión de diseño: el modo apunta a comparar ramp-ups, no a blends precisos — para throughput real del equipo está el modo Per week.
-- **Worklogs fuera del árbol**: solo cuenta el esfuerzo en tickets alcanzables desde algún milestone del proyecto (milestone → epics → issues → subtasks). Trabajo logueado en tickets fuera de esa jerarquía no aparece.
+- **Duración = calendario, no esfuerzo.** Incluye fines de semana, feriados y pausas. Es deliberado: la pregunta es "en cuánto tiempo se termina", no "cuántos días hábiles de trabajo tuvo".
+- **Fallback al último worklog.** Un milestone cerrado sin effective delivery date ni resolution date se fecha con su último worklog, que subestima la entrega si el trabajo terminó antes del cierre formal.
+- **Worklogs fuera del árbol**: solo cuenta el esfuerzo en tickets alcanzables desde el milestone (milestone → epics → issues → subtasks).
 - **Autor desconocido**: worklogs sin autor se agrupan bajo `"Unknown"`.
+- **Tamaño de la selección**: comparar milestones de tamaños muy distintos es válido para el tiempo de entrega, pero el promedio de esfuerzo por milestone mezcla peras con manzanas — mirarlo junto a la intensidad por día.
 
 ### Archivos clave
 
-- `velocity/VelocityView.java` — UI, ambos modos, dispatch en `compute()`
-- `velocity/application/usecase/ComputeVelocityUseCase.java` / `ComputeWeeklyVelocityUseCase.java`
-- `velocity/application/mapper/VelocityAggregator.java` / `WeeklyVelocityAggregator.java`
-- `velocity/ui/widget/WeeklyBarChart.java`, `Sparkline.java`
+- `velocity/VelocityView.java` — UI: selección multi-proyecto, resumen, tabs por milestone y por persona
+- `velocity/application/usecase/ComputeVelocityUseCase.java` / `LoadDeliveredMilestonesUseCase.java`
+- `velocity/application/mapper/VelocityAggregator.java` / `MilestoneDelivery.java`
+- `velocity/ui/widget/ComparisonBarChart.java`, `Sparkline.java`
 - `milestone/application/usecase/LoadMilestoneDetailsUseCase.java`, `shared/config/CacheConfig.java`, `milestone/application/cache/MilestonesCacheEviction.java`
