@@ -20,11 +20,10 @@ Se elige **un proyecto** y, dentro de él, **uno o varios milestones entregados*
 
 ### Qué preguntas de negocio responde
 
-- **¿Cuánto tarda en promedio un milestone en terminarse?** El número principal ("Avg time to deliver") es el promedio de días; al lado, la **mediana** ("Median time to deliver") es el tiempo "típico" cuando un milestone muy largo o muy corto tuerce el promedio.
-- **¿Cuál es la dispersión?** El "Range" (más rápido–más lento en días) y el gráfico de barras, que ordena visualmente la selección con una línea punteada en el promedio.
-- **¿Entregamos a tiempo?** "On-time" (cuántos entregaron en fecha o antes) y "Avg schedule slip" (adelanto/atraso promedio contra la fecha planificada).
-- **¿Terminar rápido salió caro?** Cada milestone muestra su esfuerzo total y su **esfuerzo por día abierto** (intensidad): dos milestones de la misma duración con intensidades distintas implican equipos de tamaño distinto o tiempo muerto.
-- **¿Quién participó de cada entrega y con cuánto peso?** El tab "Per person" desglosa la misma selección por persona.
+- **¿Cuánto tarda en promedio un milestone en terminarse?** El número principal ("Avg time to deliver") es el promedio de días. La dispersión la muestra el gráfico de barras, con una línea punteada en el promedio.
+- **¿En qué se diferencian dos milestones?** El tab "Compare milestones" los pone **lado a lado** en una tabla (una columna por milestone, una fila por métrica) para leerlos línea por línea.
+- **¿Terminar rápido salió caro?** La tabla muestra, por milestone, su esfuerzo total y su **esfuerzo por día abierto** (intensidad): dos milestones de la misma duración con intensidades distintas implican equipos de tamaño distinto o tiempo muerto.
+- **¿Quién cargó cada entrega?** La tabla termina con un bloque de esfuerzo por persona, y el tab "Per person" desglosa la misma selección desde cada contribuidor.
 
 ### Cómo usar la pantalla
 
@@ -36,15 +35,16 @@ El toggle **MD / Hours** de la toolbar cambia solo cómo se muestra el **esfuerz
 
 Qué muestra:
 
-- **Tarjeta de resumen del equipo**: tiempo promedio y mediano de entrega, rango (más rápido–más lento), on-time (N de M), desvío promedio de cronograma, esfuerzo promedio por milestone, cantidad de milestones y de contribuidores.
-- **Tab "By milestone"**: un **gráfico de barras** con los días de cada milestone (la clave abajo de cada barra) y una **línea punteada con el promedio**. Debajo, una sección colapsable por milestone con sus fechas de arranque y entrega, su fecha planificada y si llegó a tiempo, su esfuerzo, su intensidad y el esfuerzo de cada persona con su porcentaje.
+- **Tarjeta de resumen del equipo**: cuatro cuadros — **Avg time to deliver** (el principal), **Milestones** (cuántos se comparan), **Avg effort** (esfuerzo promedio por milestone) y **Contributors**.
+- **Tab "Compare milestones"**: un **gráfico de barras** con los días de cada milestone (cada barra del **color** de su milestone, la clave abajo) y una **línea punteada con el promedio**. Debajo, una **tabla comparativa lado a lado**: una columna por milestone (con su color y su clave), y filas de métricas — duración (se resalta la más rápida), fechas de arranque y entrega, esfuerzo total, esfuerzo por día abierto y contribuidores — más un bloque de esfuerzo por persona (cada persona con lo que puso en cada milestone y su porcentaje, o "—" si no participó).
 - **Tab "Per person"**: una sección colapsable por persona, con un mini gráfico del reparto de su esfuerzo entre los milestones seleccionados y, al expandir, cuánto puso en cada milestone y **qué porcentaje del esfuerzo total del milestone** representó (cuánto de esa entrega cargó).
+
+El mismo milestone lleva **el mismo color** en el gráfico y en su columna de la tabla, para identificarlo de un vistazo.
 
 ### Cómo leer los números sin malinterpretarlos
 
-- **La duración es tiempo de calendario, no esfuerzo.** Un milestone de 40 días puede haber tenido 5 días de trabajo real: los días incluyen fines de semana, esperas y pausas. Para el trabajo real está la columna de esfuerzo.
-- **El on-time compara contra la fecha planificada, no contra el promedio del equipo.** "A tiempo" = entregado en la fecha planificada o antes. Un milestone sin fecha planificada no cuenta ni como a tiempo ni como tarde (queda afuera del "N de M" y del desvío promedio); si ningún milestone tiene fecha planificada, esos dos cuadros muestran "—".
-- **Un milestone sin fechas de entrega no promedia.** Si no se puede establecer arranque o entrega, se muestra "n/a" y queda afuera del promedio, la mediana y el rango (no cuenta como cero).
+- **La duración es tiempo de calendario, no esfuerzo.** Un milestone de 40 días puede haber tenido 5 días de trabajo real: los días incluyen fines de semana, esperas y pausas. Para el trabajo real está la fila de esfuerzo.
+- **Un milestone sin fechas de entrega no promedia.** Si no se puede establecer arranque o entrega, se muestra "n/a" y queda afuera del promedio (no cuenta como cero).
 - **Solo cuenta lo que se registra.** El esfuerzo depende de la disciplina de carga de worklogs en Jira; el tiempo de entrega no, porque sale de las fechas del milestone.
 - **Solo cuenta el trabajo dentro del árbol del milestone** (milestone → epics → issues → subtasks). Trabajo logueado fuera de esa jerarquía no aparece.
 - **Los datos pueden tener hasta ~5 minutos de atraso.** La app cachea los árboles de milestone de Jira y limpia la cache cada 5 minutos.
@@ -63,6 +63,7 @@ El feature vive en `src/main/java/com/example/timetracking/velocity/`, con capas
 | `application/usecase/` | `LoadDeliveredMilestonesUseCase` (qué se puede elegir), `ComputeVelocityUseCase` (orquestación del cálculo) |
 | `application/mapper/` | `MilestoneDelivery` (reglas de entrega), `VelocityAggregator` — cálculo puro, sin dependencias de Jira ni de UI |
 | `application/dto/` | Records inmutables: `VelocityReport`, `MilestoneVelocity`, `PersonVelocity`, `PersonMilestoneEffort` |
+| `ui/style/` | `VelocityStyles` — stylesheet inyectada, empty-state, KPI tiles y la **paleta por milestone** (`colorFor`) |
 | `ui/widget/` | Widgets de CSS puro: `ComparisonBarChart`, `Sparkline`, `UnitToggle`, `CollapsibleSection` |
 
 Dirección de dependencias: `velocity` depende del feature `milestone` (loaders, dominio, estilos) y de `shared/jira`; **nada depende de velocity**. Es una capa de solo lectura/analítica sobre los mismos datos de Jira que usa la vista Milestone.
@@ -94,7 +95,7 @@ return parseDate(metadata.effectiveDeliveryDate()) != null || hasDeliveredStatus
 - **Entregado** si tiene *effective delivery date* (`customfield_13445`), o si su status es terminal (`delivered`, `done`, `closed`, `resolved`, `completed`, `finished`, `released`).
 - **Fecha de entrega** (`deliveryDate`): effective delivery date → `resolutiondate` → último worklog.
 - **Fecha de arranque** (`startDate`): el custom field de start date (`customfield_15030`) → primer worklog.
-- **Fecha planificada** (`plannedDate`): `baselineDeliveryDate` (`customfield_13434`) → `dueDate`. Es lo *planeado*, no lo real; existe para compararse contra la entrega real y juzgar puntualidad. Nunca se usa como fecha de entrega.
+- Las fechas **planificadas** (`dueDate`, `baselineDeliveryDate`) nunca se usan como fecha de entrega; y desde que se sacó la puntualidad del feature, no se usan para nada (por eso salieron del JQL de listado).
 
 El tipo de milestone **no se filtra**: cualquier milestone entregado entra en la comparación.
 
@@ -120,40 +121,32 @@ List<MilestoneVelocity> datable = datable();   // milestones con hasDuration()
 return (int) Math.round(datable.stream().mapToInt(MilestoneVelocity::durationDays).average().orElse(0));
 ```
 
-- `medianDurationDays()`: mediana sobre `datable()` (más robusta que el promedio ante un milestone atípico).
-- `fastest()` / `slowest()`: mín/máx de `datable()`; la vista los resume como "Range" (más rápido–más lento).
 - `avgSecondsPerMilestone()`: divide por **todos** los milestones seleccionados, porque el esfuerzo se conoce aunque las fechas no.
+- `fastestDurationDays()`: mínimo de `datable()`; la tabla resalta esa fila (el milestone más rápido) en verde.
 - `MilestoneVelocity.secondsPerDay()`: intensidad = esfuerzo / días abiertos.
 
-**Puntualidad** — sobre `planned()`, los milestones que tienen `plannedDate` (`scheduleVarianceDays != null`):
-
-```java
-// scheduleVarianceDays = entrega − plan  (positivo = tarde)
-public int onTimeCount() {   // entregas con variance <= 0
-    return (int) planned().stream().filter(MilestoneVelocity::isOnTime).count();
-}
-```
-
-`avgScheduleVarianceDays()` promedia el desvío solo sobre `planned()`. Un milestone sin plan queda afuera del on-time y del desvío (no cuenta como puntual ni como atrasado); si `planned()` está vacío, la vista muestra "—" en esos dos cuadros.
+El summary usa solo `avgDurationDays()`, `avgSecondsPerMilestone()`, `milestones().size()` y `contributors()`. La mediana, el rango y la puntualidad se quitaron (la dispersión ya la muestra el gráfico; el on-time no aportaba y dependía de fechas planificadas que no siempre están cargadas).
 
 #### Cifras por persona — `PersonVelocity` + `PersonMilestoneEffort`
 
-Por cada persona y cada milestone se acumulan los segundos (`PersonMilestoneEffort` = `milestoneKey` + `seconds`). La vista muestra, por milestone, el esfuerzo de la persona y su **porcentaje del esfuerzo total del milestone** (cuánto de esa entrega cargó); `avgSecondsPerMilestone()` es su esfuerzo promedio por milestone participado. El aggregator **deduplica tickets alcanzables desde más de un milestone seleccionado** con un set `seenTickets`, atribuyéndolos al primer milestone que los alcanza.
+Por cada persona y cada milestone se acumulan los segundos (`PersonMilestoneEffort` = `milestoneKey` + `seconds`). En la tabla comparativa y en el tab Per person se muestra, por milestone, el esfuerzo de la persona y su **porcentaje del esfuerzo total del milestone** (cuánto de esa entrega cargó); `avgSecondsPerMilestone()` es su esfuerzo promedio por milestone participado. El cross-tab de la tabla se arma con `MilestoneVelocity.secondsByPerson()` (unión de personas de la selección). El aggregator **deduplica tickets alcanzables desde más de un milestone seleccionado** con un set `seenTickets`, atribuyéndolos al primer milestone que los alcanza.
 
 ### UI: gráficos sin librería de charts
 
-Todos los gráficos son **divs con CSS puro**, sin librería externa:
+Todos los gráficos y la tabla son **divs con CSS puro**, sin librería externa:
 
-- **`ComparisonBarChart`**: área de 140 px con una barra por milestone que escala dentro de 118 px (`BAR_AREA_PX`, deja lugar al valor arriba de cada barra). La escala usa `max(promedio, máximo de las columnas)` para que la línea de promedio siempre entre en el gráfico. La línea es un `Div` absoluto con `border-top: 1px dashed` en `bottom = round(avg * 118 / max)` px, con su etiqueta ("avg N days") a la derecha. Una columna sin duración medible conserva su lugar con la etiqueta `n/a` y sin barra.
+- **`ComparisonBarChart`**: área de 140 px con una barra por milestone que escala dentro de 118 px (`BAR_AREA_PX`, deja lugar al valor arriba de cada barra). Cada `Column` lleva su **color** (el del milestone, vía `VelocityStyles.colorFor`); un color `null` cae al color por defecto. La escala usa `max(promedio, máximo de las columnas)` para que la línea de promedio siempre entre en el gráfico. La línea de referencia es solo el **promedio**: un `Div` absoluto con `border-top: 1px dashed` en `bottom = round(avg * 118 / max)` px, con su etiqueta ("avg N days") a la derecha. Una columna sin duración medible conserva su lugar con la etiqueta `n/a` y sin barra.
+- **Tabla comparativa** (`VelocityView.comparisonTable`): un CSS grid `minmax(150px,200px) repeat(N, minmax(150px,1fr))` dentro de un contenedor con `overflow-x: auto`. Header con una columna por milestone (borde superior en su color + clave + nombre); filas de métricas construidas con `addRow(...)` (una función `MilestoneVelocity → celda` por fila); la fila de duración resalta el más rápido en verde; el bloque "Effort per person" agrega una fila por persona con su esfuerzo y % en cada milestone. Todo desde el `VelocityReport` ya computado.
 - **`Sparkline`**: flexbox de barras finitas, altura porcentual sobre el máximo, tooltip por barra. En el tab "Per person" muestra el reparto del esfuerzo de esa persona entre los milestones seleccionados.
 - **`UnitToggle`**: wrapper fino sobre `Tabs` de Vaadin. Cambiar de unidad solo re-renderiza; el report ya computado no se recalcula.
-- **`CollapsibleSection`**: secciones expandibles de milestone y de persona (copia local del widget, movida desde el feature milestone).
+- **`CollapsibleSection`**: secciones expandibles del tab Per person (copia local del widget, movida desde el feature milestone).
 
 ### Datos, caching y paralelismo
 
 - **Cache**: `LoadMilestoneDetailsUseCase.loadByKey` es `@Cacheable(MILESTONE_TREE_CACHE)` con key = clave del milestone, sobre un `ConcurrentMapCacheManager` (`shared/config/CacheConfig`). Un job programado (`MilestonesCacheEviction`, cron `0 */5 * * * *`) evicta **todas** las entradas cada 5 minutos para mantener frescura. Abrir la vista Milestone primero calienta la cache que velocity después reutiliza.
 - **Carga paralela**: cada árbol de milestone son varias llamadas encadenadas a Jira y la evicción de 5 minutos hace que la mayoría de los computes sean cold-load, así que `ComputeVelocityUseCase.loadTreesInParallel` submitea cada `loadByKey` a un pool fijo acotado (`PARALLEL_LOADS = 6`, moderado para respetar rate limits de Jira), preservando el orden de submission. El wall time queda en ~el batch más lento en vez de la suma de todos los milestones. Si un milestone falla, falla el compute completo. Como se invoca el bean inyectado (proxy de Spring), `@Cacheable` sigue aplicando dentro del pool.
-- **Listado de milestones**: `searchMilestonesWithDeliveryByProject` es una búsqueda por proyecto que trae status y fechas de ciclo de vida además del summary; el filtro de entregados corre en memoria, así que no depende de adivinar nombres de status en el JQL. La fecha planificada usada para on-time ya viene en el árbol cacheado (`getIssue` trae `duedate` y `customfield_13434`), así que los cuadros de puntualidad no cuestan ninguna llamada extra.
+- **Listado de milestones**: `searchMilestonesWithDeliveryByProject` es una búsqueda por proyecto que trae status y las fechas necesarias para detectar entrega (`customfield_13445`, `resolutiondate`) además del summary; el filtro de entregados corre en memoria, así que no depende de adivinar nombres de status en el JQL.
+- **Tabla y colores**: la tabla comparativa y el cross-tab por persona se arman con lo que ya trae el `VelocityReport` — cero llamadas nuevas a Jira. La paleta (`VelocityStyles.colorFor`) es determinística por índice de selección, así que gráfico y tabla coinciden.
 - **Validación**: `ComputeVelocityUseCase` valida las claves de milestone contra `^[A-Z][A-Z0-9_]+-\d+$`.
 
 ### Limitaciones y decisiones de modelado conocidas
@@ -162,13 +155,13 @@ Todos los gráficos son **divs con CSS puro**, sin librería externa:
 - **Fallback al último worklog.** Un milestone cerrado sin effective delivery date ni resolution date se fecha con su último worklog, que subestima la entrega si el trabajo terminó antes del cierre formal.
 - **Worklogs fuera del árbol**: solo cuenta el esfuerzo en tickets alcanzables desde el milestone (milestone → epics → issues → subtasks).
 - **Autor desconocido**: worklogs sin autor se agrupan bajo `"Unknown"`.
-- **On-time depende de tener fecha planificada cargada.** Si en Jira no se cargan `baselineDeliveryDate` ni `dueDate`, los cuadros On-time y desvío quedan en "—". El aggregator es agnóstico del proyecto; la restricción a un solo proyecto vive solo en la vista.
-- **Tamaño de la selección**: comparar milestones de tamaños muy distintos es válido para el tiempo de entrega, pero el promedio de esfuerzo por milestone mezcla peras con manzanas — mirarlo junto a la intensidad por día.
+- **Un solo proyecto** vive solo en la vista: el aggregator es agnóstico del proyecto (recibe una lista de claves), así que el modelo no impide comparar cross-project si en el futuro se quisiera reactivar.
+- **Muchos milestones a la vez**: la tabla escala en horizontal (scroll); pensada para comparar de a pocos (típicamente dos), no decenas.
 
 ### Archivos clave
 
-- `velocity/VelocityView.java` — UI: selección de proyecto, resumen, tabs por milestone y por persona
+- `velocity/VelocityView.java` — UI: selección de proyecto, resumen, gráfico + tabla comparativa, tab por persona
 - `velocity/application/usecase/ComputeVelocityUseCase.java` / `LoadDeliveredMilestonesUseCase.java`
 - `velocity/application/mapper/VelocityAggregator.java` / `MilestoneDelivery.java`
-- `velocity/ui/widget/ComparisonBarChart.java`, `Sparkline.java`
+- `velocity/ui/style/VelocityStyles.java` (paleta), `velocity/ui/widget/ComparisonBarChart.java`, `Sparkline.java`
 - `milestone/application/usecase/LoadMilestoneDetailsUseCase.java`, `shared/config/CacheConfig.java`, `milestone/application/cache/MilestonesCacheEviction.java`

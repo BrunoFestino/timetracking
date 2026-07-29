@@ -24,11 +24,15 @@ public class ComparisonBarChart extends Div {
     private static final int BAR_AREA_PX = 118;
     private static final String GRID_COLOR = "#F0F2F4";
 
-    /** One bar of the chart: the plotted value, its label, the caption below it and hover text. */
-    public record Column(long value, String valueLabel, String caption, String tooltip) {
+    /**
+     * One bar of the chart: the plotted value, its label, the caption below it, hover text and
+     * the bar colour. A {@code null} colour falls back to the chart's default, so every bar can
+     * carry the colour that identifies its milestone across chart and comparison table.
+     */
+    public record Column(long value, String valueLabel, String caption, String tooltip, String color) {
     }
 
-    public ComparisonBarChart(List<Column> columns, long avgValue, String avgLabel, String color) {
+    public ComparisonBarChart(List<Column> columns, long avgValue, String avgLabel, String defaultColor) {
         setWidthFull();
 
         long maxValue = columns.stream().mapToLong(Column::value).max().orElse(0L);
@@ -98,7 +102,6 @@ public class ComparisonBarChart extends Div {
             long barPx = column.value() > 0
                     ? Math.max(2L, Math.round(column.value() * (double) BAR_AREA_PX / max))
                     : 0;
-            boolean peak = column.value() > 0 && column.value() == maxValue;
 
             Span value = new Span(column.valueLabel());
             value.getStyle()
@@ -115,7 +118,7 @@ public class ComparisonBarChart extends Div {
                     .set("max-width", "42px")
                     .set("height", barPx + "px")
                     .set("flex-shrink", "0")
-                    .set("background", peak ? DashboardStyle.PRIMARY_900 : color)
+                    .set("background", column.color() != null ? column.color() : defaultColor)
                     .set("border-radius", "4px 4px 0 0");
 
             Div columnDiv = new Div(value, bar);

@@ -59,7 +59,6 @@ public class VelocityAggregator {
 
             LocalDate start = MilestoneDelivery.startDate(tree.metadata(), earliest(worklogs));
             LocalDate delivery = MilestoneDelivery.deliveryDate(tree.metadata(), latest(worklogs));
-            LocalDate planned = MilestoneDelivery.plannedDate(tree.metadata());
 
             totalSeconds += milestoneSeconds;
             perMilestone.add(new MilestoneVelocity(
@@ -70,8 +69,6 @@ public class VelocityAggregator {
                     start,
                     delivery,
                     MilestoneDelivery.durationDays(start, delivery),
-                    planned,
-                    MilestoneDelivery.scheduleVarianceDays(planned, delivery),
                     milestoneSeconds,
                     sortedByValueDesc(secondsByPerson)));
         }

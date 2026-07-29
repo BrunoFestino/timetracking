@@ -66,32 +66,6 @@ public final class MilestoneDelivery {
         return start != null ? start : firstWorklogDate;
     }
 
-    /**
-     * The date the milestone was <i>supposed</i> to land: the baseline delivery date, else the
-     * due date. Unlike {@link #deliveryDate}, this is the plan, not the actual — it exists to be
-     * compared against the actual to judge whether a delivery was on time. {@code null} when the
-     * milestone carries no planned date.
-     */
-    public static LocalDate plannedDate(JiraMetadata metadata) {
-        if (metadata == null) {
-            return null;
-        }
-        LocalDate baseline = parseDate(metadata.baselineDeliveryDate());
-        return baseline != null ? baseline : parseDate(metadata.dueDate());
-    }
-
-    /**
-     * How far the actual delivery slipped from the plan, in calendar days: positive when late,
-     * negative when early, zero when on the day. {@code null} when either date is unknown, so a
-     * milestone without a plan is left out of on-time figures rather than counted as on time.
-     */
-    public static Integer scheduleVarianceDays(LocalDate planned, LocalDate delivery) {
-        if (planned == null || delivery == null) {
-            return null;
-        }
-        return (int) (delivery.toEpochDay() - planned.toEpochDay());
-    }
-
     /** Inclusive calendar days between start and delivery; {@code 0} when the window is unknown. */
     public static int durationDays(LocalDate start, LocalDate delivery) {
         if (start == null || delivery == null || delivery.isBefore(start)) {

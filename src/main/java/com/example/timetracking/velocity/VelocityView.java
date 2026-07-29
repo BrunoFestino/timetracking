@@ -4,7 +4,6 @@ import com.example.timetracking.milestone.application.usecase.LoadProjectsUseCas
 import com.example.timetracking.milestone.domain.JiraProject;
 import com.example.timetracking.milestone.domain.JiraTicket;
 import com.example.timetracking.milestone.ui.style.DashboardStyle;
-import com.example.timetracking.milestone.ui.widget.DetailsRow;
 import com.example.timetracking.velocity.application.dto.MilestoneVelocity;
 import com.example.timetracking.velocity.application.dto.PersonMilestoneEffort;
 import com.example.timetracking.velocity.application.dto.PersonVelocity;
@@ -237,7 +236,7 @@ public class VelocityView extends VerticalLayout {
 
     // ── summary card ────────────────────────────────────────────────────────────
 
-    /** "Team summary" card: a wrapping row of KPI tiles, the average delivery time leading. */
+    /** "Team summary" card: the headline delivery time plus a few context figures. */
     private Div summaryCard(UnitToggle.Unit unit) {
         Div card = card(DashboardStyle.MILESTONE);
 
@@ -246,51 +245,14 @@ public class VelocityView extends VerticalLayout {
 
         Div tileRow = new Div(
                 VelocityStyles.kpiTile("Avg time to deliver", days(report.avgDurationDays()), true),
-                VelocityStyles.kpiTile("Median time to deliver", days(report.medianDurationDays()), false),
-                VelocityStyles.kpiTile("Range", range(), false),
-                VelocityStyles.kpiTile("On-time", onTime(), false),
-                VelocityStyles.kpiTile("Avg schedule slip", variance(), false),
-                VelocityStyles.kpiTile("Avg effort", unit.format(report.avgSecondsPerMilestone()), false),
                 VelocityStyles.kpiTile("Milestones", String.valueOf(report.milestones().size()), false),
+                VelocityStyles.kpiTile("Avg effort", unit.format(report.avgSecondsPerMilestone()), false),
                 VelocityStyles.kpiTile("Contributors", String.valueOf(report.contributors()), false));
         tileRow.addClassName(VelocityStyles.KPI_ROW_CLASS);
         tileRow.setWidthFull();
 
         card.add(header, tileRow);
         return card;
-    }
-
-    /** Fastest–slowest span in days, e.g. "12–37 d"; "—" when nothing is datable. */
-    private String range() {
-        MilestoneVelocity fastest = report.fastest().orElse(null);
-        MilestoneVelocity slowest = report.slowest().orElse(null);
-        if (fastest == null || slowest == null) {
-            return "—";
-        }
-        return fastest.durationDays() == slowest.durationDays()
-                ? fastest.durationDays() + " d"
-                : fastest.durationDays() + "–" + slowest.durationDays() + " d";
-    }
-
-    /** "3 of 5" delivered on or before plan; "—" when no milestone carried a planned date. */
-    private String onTime() {
-        int planned = report.planned().size();
-        return planned == 0 ? "—" : report.onTimeCount() + " of " + planned;
-    }
-
-    /** Average slip vs plan, e.g. "+3 d late" / "5 d early" / "on plan"; "—" without any plan. */
-    private String variance() {
-        if (report.planned().isEmpty()) {
-            return "—";
-        }
-        int slip = report.avgScheduleVarianceDays();
-        if (slip > 0) {
-            return "+" + slip + " d late";
-        }
-        if (slip < 0) {
-            return -slip + " d early";
-        }
-        return "on plan";
     }
 
     // ── tabs card ───────────────────────────────────────────────────────────────
@@ -312,7 +274,7 @@ public class VelocityView extends VerticalLayout {
                 .set("align-items", "center")
                 .set("margin-bottom", "12px");
 
-        Tab teamTab = new Tab("By milestone");
+        Tab teamTab = new Tab("Compare milestones");
         Tab personsTab = new Tab("Per person");
         Tabs tabs = new Tabs(teamTab, personsTab);
         tabs.setWidthFull();
@@ -344,7 +306,7 @@ public class VelocityView extends VerticalLayout {
         return card;
     }
 
-    // ── team tab: milestones side by side, longest window first in the eye ─────
+    // ── compare tab: the duration chart plus a side-by-side comparison table ───
 
     private Component teamTabContent(UnitToggle.Unit unit) {
         Div wrapper = new Div();
@@ -355,43 +317,25 @@ public class VelocityView extends VerticalLayout {
             return wrapper;
         }
 
-        wrapper.add(durationChart());
-
-        int maxDays = report.milestones().stream().mapToInt(MilestoneVelocity::durationDays).max().orElse(0);
-        for (MilestoneVelocity milestone : report.milestones()) {
-            DetailsRow header = wide(new DetailsRow(
-                    label(milestone.key(), milestone.name()),
-                    percent(milestone.durationDays(), maxDays),
-                    days(milestone.durationDays()) + " · " + unit.format(milestone.totalSpentSeconds()),
-                    DashboardStyle.MILESTONE));
-
-            VerticalLayout body = subRows();
-            body.add(DashboardStyle.note(windowNote(milestone)));
-            body.add(detailRow("Planned delivery", scheduleNote(milestone)));
-            body.add(detailRow("Effort", unit.format(milestone.totalSpentSeconds())));
-            body.add(detailRow("Effort per day open", unit.formatPerDay(milestone.secondsPerDay())));
-            body.add(detailRow("Contributors", String.valueOf(milestone.contributors())));
-            if (!milestone.secondsByPerson().isEmpty()) {
-                body.add(DashboardStyle.note("Effort per person"));
-                milestone.secondsByPerson().forEach((person, seconds) -> body.add(detailRow(
-                        person,
-                        unit.format(seconds) + " · " + share(seconds, milestone.totalSpentSeconds()))));
-            }
-
-            wrapper.add(new CollapsibleSection(header, body));
-        }
+        wrapper.add(durationChart(), comparisonTable(unit));
         return wrapper;
     }
 
-    /** Bar chart of days-to-deliver per milestone, with the selection's average as a dashed line. */
+    /**
+     * Bar chart of days-to-deliver per milestone, each bar in its milestone's colour (matching
+     * its comparison-table column) and the selection's average as a dashed line.
+     */
     private Div durationChart() {
+        List<MilestoneVelocity> milestones = report.milestones();
         List<ComparisonBarChart.Column> columns = new ArrayList<>();
-        for (MilestoneVelocity milestone : report.milestones()) {
+        for (int i = 0; i < milestones.size(); i++) {
+            MilestoneVelocity milestone = milestones.get(i);
             columns.add(new ComparisonBarChart.Column(
                     milestone.durationDays(),
                     milestone.hasDuration() ? String.valueOf(milestone.durationDays()) : "n/a",
                     milestone.key(),
-                    label(milestone.key(), milestone.name()) + ": " + days(milestone.durationDays())));
+                    label(milestone.key(), milestone.name()) + ": " + days(milestone.durationDays()),
+                    VelocityStyles.colorFor(i)));
         }
 
         Div chart = new Div(
@@ -404,6 +348,161 @@ public class VelocityView extends VerticalLayout {
                 .set("flex-direction", "column")
                 .set("gap", "6px");
         return chart;
+    }
+
+    // ── comparison table: metrics down the side, one column per milestone ──────
+
+    /** Left label column plus one flexible column per compared milestone. */
+    private String gridColumns() {
+        return "minmax(150px, 200px) repeat(" + report.milestones().size() + ", minmax(150px, 1fr))";
+    }
+
+    /**
+     * The side-by-side comparison: each milestone is a colour-coded column, each metric a row,
+     * so two milestones can be read against each other line by line. Ends with an effort-per-person
+     * block — the union of everyone who worked on any compared milestone, each with their effort
+     * per milestone — so the detailed comparison also shows who carried which delivery.
+     */
+    private Div comparisonTable(UnitToggle.Unit unit) {
+        List<MilestoneVelocity> milestones = report.milestones();
+        int fastest = report.fastestDurationDays();
+
+        Div table = new Div();
+        table.getStyle().set("display", "grid").set("grid-template-columns", gridColumns())
+                .set("min-width", "fit-content").set("box-sizing", "border-box");
+
+        table.add(cornerCell());
+        for (int i = 0; i < milestones.size(); i++) {
+            table.add(milestoneHeaderCell(milestones.get(i), VelocityStyles.colorFor(i)));
+        }
+
+        // metric rows: label in the first column, one value per milestone
+        addRow(table, "Duration", milestones, m -> durationCell(m, fastest), false);
+        addRow(table, "Started", milestones, m -> textCell(date(m.startDate())), false);
+        addRow(table, "Delivered", milestones, m -> textCell(date(m.deliveryDate())), false);
+        addRow(table, "Total effort", milestones, m -> textCell(unit.format(m.totalSpentSeconds())), true);
+        addRow(table, "Effort per day open", milestones, m -> textCell(unit.formatPerDay(m.secondsPerDay())), false);
+        addRow(table, "Contributors", milestones, m -> textCell(String.valueOf(m.contributors())), true);
+
+        addPersonRows(table, milestones, unit);
+
+        Div scroller = new Div(table);
+        scroller.getStyle().set("width", "100%").set("overflow-x", "auto").set("box-sizing", "border-box");
+        return scroller;
+    }
+
+    /** Empty top-left corner of the grid. */
+    private Div cornerCell() {
+        Div cell = tableCell(false);
+        cell.getStyle().set("background", "#FFFFFF");
+        return cell;
+    }
+
+    /** Column header for one milestone: a colour bar, its key (bold) and its name. */
+    private Div milestoneHeaderCell(MilestoneVelocity milestone, String color) {
+        Span keySpan = new Span(milestone.key());
+        keySpan.getStyle().set("font-size", "13px").set("font-weight", "700").set("color", DashboardStyle.INK);
+
+        Span nameSpan = new Span(milestone.name() == null ? "" : milestone.name());
+        nameSpan.getStyle().set("font-size", "12px").set("color", DashboardStyle.MUTED)
+                .set("overflow-wrap", "anywhere").set("line-height", "1.25");
+
+        Div cell = new Div(keySpan, nameSpan);
+        cell.getStyle()
+                .set("display", "flex").set("flex-direction", "column").set("gap", "2px")
+                .set("padding", "8px 10px")
+                .set("border-top", "3px solid " + color)
+                .set("border-bottom", "1px solid " + DashboardStyle.REMAINING)
+                .set("background", "#FBFCFD")
+                .set("box-sizing", "border-box");
+        return cell;
+    }
+
+    /** Adds one metric row: a label cell followed by a rendered value cell per milestone. */
+    private void addRow(Div table, String label, List<MilestoneVelocity> milestones,
+                        java.util.function.Function<MilestoneVelocity, Div> valueCell, boolean shaded) {
+        table.add(labelCell(label, shaded));
+        for (MilestoneVelocity milestone : milestones) {
+            Div cell = valueCell.apply(milestone);
+            if (shaded) {
+                cell.getStyle().set("background", "#F8FAFB");
+            }
+            table.add(cell);
+        }
+    }
+
+    /** Duration value; the fastest milestone(s) of the selection get a green, bold accent. */
+    private Div durationCell(MilestoneVelocity milestone, int fastest) {
+        Div cell = textCell(days(milestone.durationDays()));
+        if (milestone.hasDuration() && milestone.durationDays() == fastest) {
+            cell.getStyle().set("color", DashboardStyle.ON_TRACK).set("font-weight", "700");
+        }
+        return cell;
+    }
+
+    /**
+     * One row per person who logged on any compared milestone, each cell their effort on that
+     * milestone (with its share) or "—". People are ordered by total effort across the selection.
+     */
+    private void addPersonRows(Div table, List<MilestoneVelocity> milestones, UnitToggle.Unit unit) {
+        if (report.perPerson().isEmpty()) {
+            return;
+        }
+        table.add(sectionCell("Effort per person"));
+        for (int i = 0; i < milestones.size(); i++) {
+            table.add(sectionCell(""));
+        }
+        for (PersonVelocity person : report.perPerson()) {
+            table.add(labelCell(person.name(), false));
+            for (MilestoneVelocity milestone : milestones) {
+                long seconds = milestone.secondsByPerson().getOrDefault(person.name(), 0L);
+                table.add(seconds > 0
+                        ? textCell(unit.format(seconds) + " · " + share(seconds, milestone.totalSpentSeconds()))
+                        : textCell("—"));
+            }
+        }
+    }
+
+    /** Full-width band that titles a group of rows (e.g. "Effort per person"). */
+    private Div sectionCell(String text) {
+        Div cell = tableCell(false);
+        cell.getStyle().set("background", "#F1F4F6").set("font-weight", "600")
+                .set("font-size", "12px").set("color", DashboardStyle.MILESTONE);
+        if (!text.isBlank()) {
+            cell.setText(text);
+        }
+        return cell;
+    }
+
+    /** Left-column metric label. */
+    private Div labelCell(String text, boolean shaded) {
+        Div cell = tableCell(false);
+        cell.setText(text);
+        cell.getStyle().set("font-weight", "600").set("color", DashboardStyle.INK)
+                .set("background", shaded ? "#F8FAFB" : "#FFFFFF");
+        return cell;
+    }
+
+    /** Plain value cell holding the given text. */
+    private Div textCell(String text) {
+        Div cell = tableCell(true);
+        cell.setText(text);
+        return cell;
+    }
+
+    /** Shared cell chrome: padding, font and a hairline bottom border. */
+    private Div tableCell(boolean muted) {
+        Div cell = new Div();
+        cell.getStyle()
+                .set("padding", "7px 10px")
+                .set("font-size", "13px")
+                .set("color", muted ? DashboardStyle.MUTED : DashboardStyle.INK)
+                .set("border-bottom", "1px solid #F0F2F4")
+                .set("box-sizing", "border-box")
+                .set("white-space", "nowrap")
+                .set("overflow", "hidden")
+                .set("text-overflow", "ellipsis");
+        return cell;
     }
 
     // ── per-person tab: the same milestones seen through each contributor ──────
@@ -491,37 +590,6 @@ public class VelocityView extends VerticalLayout {
     /** Single date format for every rendered date in the view, e.g. "2026/07/16". */
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy/MM/dd");
 
-    /**
-     * Widens the value column of a {@link DetailsRow} header grid so combined values like
-     * "34 days · 12.0 MD" fit without clipping at the card edge.
-     */
-    private <T extends Div> T wide(T row) {
-        row.getStyle().set("grid-template-columns", "1fr 160px 175px");
-        return row;
-    }
-
-    /** "Started 2026/01/05 · delivered 2026/02/10 · 37 days" — or what is known of it. */
-    private String windowNote(MilestoneVelocity milestone) {
-        if (!milestone.hasDuration()) {
-            return "No start or delivery date on this milestone — duration cannot be measured";
-        }
-        return "Started " + date(milestone.startDate())
-                + " · delivered " + date(milestone.deliveryDate())
-                + " · " + days(milestone.durationDays());
-    }
-
-    /** "2026/02/01 · 9 days late" / "3 days early" / "on plan", or "no planned date" without a plan. */
-    private String scheduleNote(MilestoneVelocity milestone) {
-        if (!milestone.hasPlan()) {
-            return "no planned date";
-        }
-        int slip = milestone.scheduleVarianceDays();
-        String status = slip > 0 ? slip + " day" + (slip == 1 ? "" : "s") + " late"
-                : slip < 0 ? -slip + " day" + (slip == -1 ? "" : "s") + " early"
-                : "on plan";
-        return date(milestone.plannedDate()) + " · " + status;
-    }
-
     private String date(LocalDate date) {
         return date != null ? DATE.format(date) : "unknown";
     }
@@ -592,9 +660,5 @@ public class VelocityView extends VerticalLayout {
 
     private String label(String key, String name) {
         return name != null && !name.isBlank() ? key + " - " + name : key;
-    }
-
-    private double percent(long value, long max) {
-        return max > 0 ? value * 100.0 / max : 0;
     }
 }

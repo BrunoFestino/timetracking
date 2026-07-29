@@ -17,8 +17,8 @@ public class JiraRestClient implements JiraApiClient {
     private static final String PROJECT_CLAUSE = "project = ";
     /** Status and lifecycle dates used to tell whether a milestone is delivered, and when. */
     private static final String DELIVERY_FIELDS =
-            "summary,issuetype,status,resolution,resolutiondate,duedate,created,project,"
-                    + "customfield_15030,customfield_13434,customfield_13445";
+            "summary,issuetype,status,resolution,resolutiondate,created,project,"
+                    + "customfield_15030,customfield_13445";
 
     private final RestClient restClient;
 

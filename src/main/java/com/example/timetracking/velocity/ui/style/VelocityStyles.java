@@ -7,6 +7,8 @@ import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.Icon;
 import com.vaadin.flow.component.icon.VaadinIcon;
 
+import java.util.List;
+
 /**
  * Velocity-view styling helpers: an injected stylesheet for the states inline styles
  * can't express (hover, media queries), plus the reusable empty-state and KPI-tile
@@ -26,7 +28,28 @@ public final class VelocityStyles {
 
     private static final String TILE_BG = "#F8FAFB";
 
+    /**
+     * Categorical palette that gives each compared milestone its own colour, so the same
+     * milestone reads the same in the chart bars and in its comparison-table column. Eight
+     * distinct, reasonably accessible hues; {@link #colorFor(int)} cycles when there are more.
+     */
+    private static final List<String> MILESTONE_PALETTE = List.of(
+            "#2C8FB5", // blue
+            "#6554C0", // purple
+            "#2E7D32", // green
+            "#B36A00", // amber
+            "#C2255C", // magenta
+            "#0F4660", // navy
+            "#00857A", // teal
+            "#8A6D3B"  // brown
+    );
+
     private VelocityStyles() {
+    }
+
+    /** Stable colour for the milestone at the given selection index (cycles past the palette). */
+    public static String colorFor(int index) {
+        return MILESTONE_PALETTE.get(Math.floorMod(index, MILESTONE_PALETTE.size()));
     }
 
     /** Appends the velocity stylesheet to the given view. Call once per view instance. */
