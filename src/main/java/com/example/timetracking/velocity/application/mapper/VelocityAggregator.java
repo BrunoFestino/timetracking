@@ -1,166 +1,149 @@
 package com.example.timetracking.velocity.application.mapper;
 
-import com.example.timetracking.milestone.domain.JiraMetadata;
 import com.example.timetracking.milestone.domain.JiraTicket;
 import com.example.timetracking.milestone.domain.Worklog;
 import com.example.timetracking.velocity.application.dto.MilestoneVelocity;
+import com.example.timetracking.velocity.application.dto.PersonMilestoneEffort;
 import com.example.timetracking.velocity.application.dto.PersonVelocity;
 import com.example.timetracking.velocity.application.dto.VelocityReport;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
-import java.time.format.DateTimeParseException;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Stream;
 
 /**
- * Turns a set of {@link JiraTicket} milestone trees into the {@link VelocityReport} model:
- * per-milestone and per-person weekly velocity (average logged effort per week), plus
- * team-level summary figures (peak week, active weeks).
+ * Turns a set of delivered {@link JiraTicket} milestone trees into the {@link VelocityReport}:
+ * how long each milestone took from start to delivery, what it cost, and the same selection
+ * broken down per person.
  *
- * <p>Weeks are relative to each milestone's start (week 1 = start), so the ramp-up of
- * different milestones can be compared side by side.
+ * <p>Each milestone is measured against its own delivery window (see {@link MilestoneDelivery}),
+ * never against the calendar, which is what makes a milestone of project X comparable with one of
+ * project Y regardless of when either ran or which type they are.
+ *
+ * <p>Tickets reachable from more than one selected milestone are counted once, for the first
+ * milestone that reaches them.
  */
 @Component
 public class VelocityAggregator {
 
-    public VelocityReport aggregate(List<JiraTicket> milestones) {
+    private static final String UNKNOWN_AUTHOR = "Unknown";
+
+    public VelocityReport aggregate(List<JiraTicket> milestoneTrees) {
         List<MilestoneVelocity> perMilestone = new ArrayList<>();
-        Map<String, Long> personTotals = new LinkedHashMap<>();
-        Map<String, Map<String, Map<Integer, Long>>> personByMilestoneWeek = new LinkedHashMap<>();
+        Map<String, PersonAccumulator> people = new LinkedHashMap<>();
+        Set<String> seenTickets = new HashSet<>();
         long totalSeconds = 0;
-        int teamObservedWeeks = 0;
 
-        for (JiraTicket milestone : milestones) {
+        for (JiraTicket tree : milestoneTrees) {
             List<Worklog> worklogs = new ArrayList<>();
-            collect(milestone, worklogs);
-            LocalDate start = startOf(milestone, worklogs);
+            collect(tree, seenTickets, worklogs);
 
-            Map<Integer, Long> secondsByWeek = new TreeMap<>();
-            long milestoneTotal = 0;
+            Map<String, Long> secondsByPerson = new LinkedHashMap<>();
+            long milestoneSeconds = 0;
             for (Worklog worklog : worklogs) {
+                String author = worklog.author() != null ? worklog.author() : UNKNOWN_AUTHOR;
                 long seconds = worklog.timeSpentSeconds();
-                int week = weekOf(start, worklog.startedDate());
-                String author = worklog.author() != null ? worklog.author() : "Unknown";
 
-                milestoneTotal += seconds;
-                secondsByWeek.merge(week, seconds, Long::sum);
-                personTotals.merge(author, seconds, Long::sum);
-                personByMilestoneWeek.computeIfAbsent(author, k -> new LinkedHashMap<>())
-                        .computeIfAbsent(milestone.key(), k -> new TreeMap<>())
-                        .merge(week, seconds, Long::sum);
-                teamObservedWeeks = Math.max(teamObservedWeeks, week);
+                milestoneSeconds += seconds;
+                secondsByPerson.merge(author, seconds, Long::sum);
+                people.computeIfAbsent(author, PersonAccumulator::new).add(tree.key(), seconds);
             }
-            totalSeconds += milestoneTotal;
+
+            LocalDate start = MilestoneDelivery.startDate(tree.metadata(), earliest(worklogs));
+            LocalDate delivery = MilestoneDelivery.deliveryDate(tree.metadata(), latest(worklogs));
+
+            totalSeconds += milestoneSeconds;
             perMilestone.add(new MilestoneVelocity(
-                    milestone.key(),
-                    milestone.summary(),
-                    milestoneTotal,
-                    durationWeeks(milestone, start, worklogs),
+                    tree.key(),
+                    tree.summary(),
+                    projectKeyOf(tree),
+                    tree.type(),
                     start,
-                    secondsByWeek));
+                    delivery,
+                    MilestoneDelivery.durationDays(start, delivery),
+                    milestoneSeconds,
+                    sortedByValueDesc(secondsByPerson)));
         }
 
-        return new VelocityReport(
-                perMilestone,
-                totalSeconds,
-                teamObservedWeeks > 0 ? totalSeconds / teamObservedWeeks : 0,
-                teamObservedWeeks,
-                persons(personTotals, personByMilestoneWeek));
+        return new VelocityReport(perMilestone, totalSeconds, persons(people));
     }
 
-    private List<PersonVelocity> persons(Map<String, Long> personTotals,
-                                         Map<String, Map<String, Map<Integer, Long>>> personByMilestoneWeek) {
-        return personTotals.entrySet().stream()
-                .map(e -> new PersonVelocity(e.getKey(), e.getValue(),
-                        personByMilestoneWeek.getOrDefault(e.getKey(), Map.of())))
+    /** Walks the tree collecting the worklogs of every ticket not already counted. */
+    private void collect(JiraTicket ticket, Set<String> seenTickets, List<Worklog> into) {
+        if (seenTickets.add(ticket.key())) {
+            into.addAll(ticket.worklogs());
+        }
+        ticket.children().forEach(child -> collect(child, seenTickets, into));
+    }
+
+    /** Project of the milestone: its metadata when loaded, else the prefix of its key. */
+    private String projectKeyOf(JiraTicket milestone) {
+        String fromMetadata = milestone.metadata().projectKey();
+        if (fromMetadata != null && !fromMetadata.isBlank()) {
+            return fromMetadata;
+        }
+        int dash = milestone.key().indexOf('-');
+        return dash > 0 ? milestone.key().substring(0, dash) : milestone.key();
+    }
+
+    private LocalDate earliest(List<Worklog> worklogs) {
+        return worklogDates(worklogs).min(Comparator.naturalOrder()).orElse(null);
+    }
+
+    private LocalDate latest(List<Worklog> worklogs) {
+        return worklogDates(worklogs).max(Comparator.naturalOrder()).orElse(null);
+    }
+
+    private Stream<LocalDate> worklogDates(List<Worklog> worklogs) {
+        return worklogs.stream()
+                .map(worklog -> MilestoneDelivery.parseDate(worklog.startedDate()))
+                .filter(Objects::nonNull);
+    }
+
+    private Map<String, Long> sortedByValueDesc(Map<String, Long> values) {
+        Map<String, Long> sorted = new LinkedHashMap<>();
+        values.entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                .forEach(entry -> sorted.put(entry.getKey(), entry.getValue()));
+        return sorted;
+    }
+
+    private List<PersonVelocity> persons(Map<String, PersonAccumulator> people) {
+        return people.values().stream()
+                .map(PersonAccumulator::toPersonVelocity)
                 .sorted(Comparator.comparingLong(PersonVelocity::totalSeconds).reversed())
                 .toList();
     }
 
-    private void collect(JiraTicket ticket, List<Worklog> into) {
-        into.addAll(ticket.worklogs());
-        ticket.children().forEach(child -> collect(child, into));
-    }
+    /** Mutable per-person tally: effort per milestone, in first-seen order. */
+    private static final class PersonAccumulator {
 
-    /**
-     * Milestone start: the {@code startDate} custom field, falling back to the earliest worklog date.
-     */
-    private LocalDate startOf(JiraTicket milestone, List<Worklog> worklogs) {
-        LocalDate start = parseDate(milestone.metadata().startDate());
-        if (start != null) {
-            return start;
-        }
-        return worklogs.stream()
-                .map(w -> parseDate(w.startedDate()))
-                .filter(java.util.Objects::nonNull)
-                .min(Comparator.naturalOrder())
-                .orElse(null);
-    }
+        private final String name;
+        private final Map<String, Long> secondsByMilestone = new LinkedHashMap<>();
+        private long totalSeconds;
 
-    /**
-     * Milestone duration in weeks (min 1): start to the first available end date
-     * (effective → baseline → due → resolution), falling back to the latest worklog date.
-     */
-    private int durationWeeks(JiraTicket milestone, LocalDate start, List<Worklog> worklogs) {
-        JiraMetadata metadata = milestone.metadata();
-        LocalDate end = firstNonNullDate(
-                metadata.effectiveDeliveryDate(),
-                metadata.baselineDeliveryDate(),
-                metadata.dueDate(),
-                metadata.resolutionDate());
-        if (end == null) {
-            end = worklogs.stream()
-                    .map(w -> parseDate(w.startedDate()))
-                    .filter(java.util.Objects::nonNull)
-                    .max(Comparator.naturalOrder())
-                    .orElse(null);
+        private PersonAccumulator(String name) {
+            this.name = name;
         }
-        if (start == null || end == null || end.isBefore(start)) {
-            return 1;
-        }
-        long days = ChronoUnit.DAYS.between(start, end) + 1;
-        return (int) Math.max(1, (days + 6) / 7);
-    }
 
-    /**
-     * Relative week of a worklog: week 1 starts at the milestone start date.
-     */
-    private int weekOf(LocalDate start, String worklogDate) {
-        LocalDate date = parseDate(worklogDate);
-        if (start == null || date == null || date.isBefore(start)) {
-            return 1;
+        private void add(String milestoneKey, long seconds) {
+            totalSeconds += seconds;
+            secondsByMilestone.merge(milestoneKey, seconds, Long::sum);
         }
-        return (int) (ChronoUnit.DAYS.between(start, date) / 7) + 1;
-    }
 
-    private LocalDate firstNonNullDate(String... values) {
-        for (String value : values) {
-            LocalDate date = parseDate(value);
-            if (date != null) {
-                return date;
-            }
-        }
-        return null;
-    }
-
-    private LocalDate parseDate(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        String trimmed = value.trim();
-        if (trimmed.length() >= 10) {
-            trimmed = trimmed.substring(0, 10);
-        }
-        try {
-            return LocalDate.parse(trimmed);
-        } catch (DateTimeParseException ex) {
-            return null;
+        private PersonVelocity toPersonVelocity() {
+            List<PersonMilestoneEffort> efforts = secondsByMilestone.entrySet().stream()
+                    .map(entry -> new PersonMilestoneEffort(entry.getKey(), entry.getValue()))
+                    .toList();
+            return new PersonVelocity(name, totalSeconds, efforts);
         }
     }
 }

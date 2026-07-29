@@ -7,6 +7,8 @@ import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.Icon;
 import com.vaadin.flow.component.icon.VaadinIcon;
 
+import java.util.List;
+
 /**
  * Velocity-view styling helpers: an injected stylesheet for the states inline styles
  * can't express (hover, media queries), plus the reusable empty-state and KPI-tile
@@ -26,7 +28,28 @@ public final class VelocityStyles {
 
     private static final String TILE_BG = "#F8FAFB";
 
+    /**
+     * Categorical palette that gives each compared milestone its own colour, so the same
+     * milestone reads the same in the chart bars and in its comparison-table column. Eight
+     * distinct, reasonably accessible hues; {@link #colorFor(int)} cycles when there are more.
+     */
+    private static final List<String> MILESTONE_PALETTE = List.of(
+            "#2C8FB5", // blue
+            "#6554C0", // purple
+            "#2E7D32", // green
+            "#B36A00", // amber
+            "#C2255C", // magenta
+            "#0F4660", // navy
+            "#00857A", // teal
+            "#8A6D3B"  // brown
+    );
+
     private VelocityStyles() {
+    }
+
+    /** Stable colour for the milestone at the given selection index (cycles past the palette). */
+    public static String colorFor(int index) {
+        return MILESTONE_PALETTE.get(Math.floorMod(index, MILESTONE_PALETTE.size()));
     }
 
     /** Appends the velocity stylesheet to the given view. Call once per view instance. */
@@ -126,6 +149,44 @@ public final class VelocityStyles {
         } else {
             tile.getStyle().set("background", TILE_BG);
         }
+        return tile;
+    }
+
+    /**
+     * A comparison stat tile: small uppercase metric name on top, big value in the middle, and a
+     * qualifier line underneath (e.g. the winning milestone key in its colour). Same footprint as
+     * {@link #kpiTile} so both wrap alike inside a {@link #KPI_ROW_CLASS} row.
+     */
+    public static Div deltaTile(String metric, String value, com.vaadin.flow.component.Component qualifier) {
+        Span metricSpan = new Span(metric);
+        metricSpan.getStyle()
+                .set("font-size", "11px")
+                .set("font-weight", "600")
+                .set("color", DashboardStyle.MUTED)
+                .set("text-transform", "uppercase")
+                .set("letter-spacing", "0.04em")
+                .set("white-space", "nowrap");
+
+        Span valueSpan = new Span(value);
+        valueSpan.getStyle()
+                .set("font-size", value.length() > 12 ? "16px" : "22px")
+                .set("font-weight", "700")
+                .set("line-height", "1.2")
+                .set("color", DashboardStyle.INK)
+                .set("white-space", "nowrap");
+
+        Div tile = new Div(metricSpan, valueSpan, qualifier);
+        tile.getStyle()
+                .set("display", "flex")
+                .set("flex-direction", "column")
+                .set("justify-content", "center")
+                .set("gap", "3px")
+                .set("flex", "1 1 150px")
+                .set("min-width", "140px")
+                .set("padding", "10px 14px")
+                .set("border-radius", "8px")
+                .set("box-sizing", "border-box")
+                .set("background", TILE_BG);
         return tile;
     }
 }

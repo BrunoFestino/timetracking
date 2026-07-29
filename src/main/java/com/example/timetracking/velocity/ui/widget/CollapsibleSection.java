@@ -10,8 +10,7 @@ import com.vaadin.flow.dom.DomEventListener;
 /**
  * Click-to-expand section (chevron + header + hidden body), used by the velocity
  * view. Supports rendering the body expanded from the start via
- * {@link #CollapsibleSection(Div, Component, boolean)} so the per-milestone weekly
- * charts show open without a click.
+ * {@link #CollapsibleSection(Div, Component, boolean)}.
  */
 public class CollapsibleSection extends Div {
 

@@ -15,6 +15,10 @@ public class JiraRestClient implements JiraApiClient {
     private static final String WORKLOG_FIELDS =
             "summary,description,issuetype,labels,timetracking,worklog,subtasks,parent,issuelinks,customfield_14230";
     private static final String PROJECT_CLAUSE = "project = ";
+    /** Status and lifecycle dates used to tell whether a milestone is delivered, and when. */
+    private static final String DELIVERY_FIELDS =
+            "summary,issuetype,status,resolution,resolutiondate,created,project,"
+                    + "customfield_15030,customfield_13445";
 
     private final RestClient restClient;
 
@@ -33,6 +37,14 @@ public class JiraRestClient implements JiraApiClient {
                 + " AND issuetype = Milestone"
                 + " ORDER BY key DESC";
         return performSearch(jql, "summary");
+    }
+
+    @Override
+    public JiraSearchResponseDto searchMilestonesWithDeliveryByProject(String projectKey) {
+        String jql = PROJECT_CLAUSE + projectKey
+                + " AND issuetype = Milestone"
+                + " ORDER BY key DESC";
+        return performSearch(jql, DELIVERY_FIELDS);
     }
 
     @Override
