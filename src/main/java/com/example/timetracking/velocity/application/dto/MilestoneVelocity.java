@@ -51,8 +51,8 @@ public record MilestoneVelocity(
     }
 
     /**
-     * Delivery intensity: effort spread over the calendar days the milestone was open.
-     * Two milestones of the same duration but different intensity mean different team sizes
+     * Delivery pace: effort spread over the calendar days the milestone was open.
+     * Two milestones of the same duration but different pace mean different team sizes
      * or different amounts of idle time.
      */
     public long secondsPerDay() {

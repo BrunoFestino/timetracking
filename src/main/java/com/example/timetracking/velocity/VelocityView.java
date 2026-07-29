@@ -256,9 +256,8 @@ public class VelocityView extends VerticalLayout {
         Div tileRow = new Div(
                 durationDelta(),
                 effortDelta(unit),
-                intensityDelta(unit),
-                teamSizeDelta(),
-                overlapStat());
+                paceDelta(unit),
+                teamSizeDelta());
         tileRow.addClassName(VelocityStyles.KPI_ROW_CLASS);
         tileRow.setWidthFull();
 
@@ -302,19 +301,19 @@ public class VelocityView extends VerticalLayout {
                 winner(heavy.key(), "+" + pct + "%"));
     }
 
-    /** Intensity gap (effort per open day) between the densest and sparsest dated milestone. */
-    private Div intensityDelta(UnitToggle.Unit unit) {
+    /** Pace gap (effort per open day) between the densest and sparsest dated milestone. */
+    private Div paceDelta(UnitToggle.Unit unit) {
         MilestoneVelocity dense = report.densest().orElse(null);
         MilestoneVelocity sparse = report.sparsest().orElse(null);
         if (dense == null || sparse == null || dense.secondsPerDay() == 0) {
-            return VelocityStyles.deltaTile("Intensity", "n/a", muted("need two dated milestones"));
+            return VelocityStyles.deltaTile("Pace", "n/a", muted("need two dated milestones"));
         }
         String value = unit.formatPerDay(dense.secondsPerDay());
         if (sparse.secondsPerDay() == 0 || dense.secondsPerDay() == sparse.secondsPerDay()) {
-            return VelocityStyles.deltaTile("Intensity", value, winner(dense.key(), "densest"));
+            return VelocityStyles.deltaTile("Pace", value, winner(dense.key(), "densest"));
         }
         String ratio = ratio(dense.secondsPerDay(), sparse.secondsPerDay());
-        return VelocityStyles.deltaTile("Intensity", value, winner(dense.key(), ratio + "× denser"));
+        return VelocityStyles.deltaTile("Pace", value, winner(dense.key(), ratio + "× denser"));
     }
 
     /** Team-size gap: how many people worked on the biggest vs the smallest milestone team. */
@@ -329,14 +328,6 @@ public class VelocityView extends VerticalLayout {
         return diff == 0
                 ? VelocityStyles.deltaTile("Team size", value, muted("same team size"))
                 : VelocityStyles.deltaTile("Team size", value, winner(most.key(), "+" + diff + " people"));
-    }
-
-    /** How many contributors worked on more than one of the selected milestones. */
-    private Div overlapStat() {
-        int shared = report.sharedContributors();
-        String on = report.milestones().size() == 2 ? "on both" : "on 2+ milestones";
-        String qualifier = shared == 0 ? "no one shared" : on;
-        return VelocityStyles.deltaTile("Shared team", String.valueOf(shared), muted(qualifier));
     }
 
     /** Qualifier line naming the leading milestone in its colour, followed by the delta phrase. */

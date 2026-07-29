@@ -49,7 +49,7 @@ public record VelocityReport(
     // ── extremes per dimension, for the comparison overview ────────────────────
     // Each delta in the overview is the gap between the selection's extremes on one dimension,
     // so a two-milestone selection reduces to a straight A-vs-B comparison. Empty when a
-    // dimension has nothing to compare (e.g. no dated milestone for duration/intensity).
+    // dimension has nothing to compare (e.g. no dated milestone for duration/pace).
 
     /** Milestone delivered in the fewest days, among the datable ones. */
     public Optional<MilestoneVelocity> fastest() {
@@ -89,10 +89,5 @@ public record VelocityReport(
     /** Milestone worked on by the fewest people. */
     public Optional<MilestoneVelocity> fewestContributors() {
         return milestones.stream().min(Comparator.comparingInt(MilestoneVelocity::contributors));
-    }
-
-    /** Contributors who logged work on more than one of the selected milestones. */
-    public int sharedContributors() {
-        return (int) perPerson.stream().filter(person -> person.milestonesParticipated() >= 2).count();
     }
 }
