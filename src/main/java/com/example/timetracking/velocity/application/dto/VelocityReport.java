@@ -1,6 +1,8 @@
 package com.example.timetracking.velocity.application.dto;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Delivery velocity for a set of delivered milestones within a project: how long each one took
@@ -39,18 +41,58 @@ public record VelocityReport(
         return (int) Math.round(datable.stream().mapToInt(MilestoneVelocity::durationDays).average().orElse(0));
     }
 
-    /** Average effort spent on a milestone of this selection. */
-    public long avgSecondsPerMilestone() {
-        return milestones.isEmpty() ? 0 : totalSeconds / milestones.size();
-    }
-
     /** Milestones with a known start and delivery date — the ones duration figures come from. */
     public List<MilestoneVelocity> datable() {
         return milestones.stream().filter(MilestoneVelocity::hasDuration).toList();
     }
 
-    /** Shortest delivery among the datable milestones (days); {@code 0} when none is datable. */
-    public int fastestDurationDays() {
-        return datable().stream().mapToInt(MilestoneVelocity::durationDays).min().orElse(0);
+    // ── extremes per dimension, for the comparison overview ────────────────────
+    // Each delta in the overview is the gap between the selection's extremes on one dimension,
+    // so a two-milestone selection reduces to a straight A-vs-B comparison. Empty when a
+    // dimension has nothing to compare (e.g. no dated milestone for duration/intensity).
+
+    /** Milestone delivered in the fewest days, among the datable ones. */
+    public Optional<MilestoneVelocity> fastest() {
+        return datable().stream().min(Comparator.comparingInt(MilestoneVelocity::durationDays));
+    }
+
+    /** Milestone that took the most days, among the datable ones. */
+    public Optional<MilestoneVelocity> slowest() {
+        return datable().stream().max(Comparator.comparingInt(MilestoneVelocity::durationDays));
+    }
+
+    /** Milestone with the most logged effort. */
+    public Optional<MilestoneVelocity> heaviestByEffort() {
+        return milestones.stream().max(Comparator.comparingLong(MilestoneVelocity::totalSpentSeconds));
+    }
+
+    /** Milestone with the least logged effort. */
+    public Optional<MilestoneVelocity> lightestByEffort() {
+        return milestones.stream().min(Comparator.comparingLong(MilestoneVelocity::totalSpentSeconds));
+    }
+
+    /** Densest delivery (most effort per open day), among the datable ones. */
+    public Optional<MilestoneVelocity> densest() {
+        return datable().stream().max(Comparator.comparingLong(MilestoneVelocity::secondsPerDay));
+    }
+
+    /** Sparsest delivery (least effort per open day), among the datable ones. */
+    public Optional<MilestoneVelocity> sparsest() {
+        return datable().stream().min(Comparator.comparingLong(MilestoneVelocity::secondsPerDay));
+    }
+
+    /** Milestone worked on by the most people. */
+    public Optional<MilestoneVelocity> mostContributors() {
+        return milestones.stream().max(Comparator.comparingInt(MilestoneVelocity::contributors));
+    }
+
+    /** Milestone worked on by the fewest people. */
+    public Optional<MilestoneVelocity> fewestContributors() {
+        return milestones.stream().min(Comparator.comparingInt(MilestoneVelocity::contributors));
+    }
+
+    /** Contributors who logged work on more than one of the selected milestones. */
+    public int sharedContributors() {
+        return (int) perPerson.stream().filter(person -> person.milestonesParticipated() >= 2).count();
     }
 }

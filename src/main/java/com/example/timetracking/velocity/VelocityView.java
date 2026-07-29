@@ -234,25 +234,147 @@ public class VelocityView extends VerticalLayout {
         results.add(summaryCard(unit), tabsCard(unit));
     }
 
-    // ── summary card ────────────────────────────────────────────────────────────
+    // ── comparison overview ───────────────────────────────────────────────────
 
-    /** "Team summary" card: the headline delivery time plus a few context figures. */
+    /**
+     * "Comparison overview" card: a snapshot of how the selected milestones differ, as deltas
+     * between the selection's extremes on each dimension (so two milestones read as a straight
+     * A-vs-B gap). Needs at least two milestones to compare.
+     */
     private Div summaryCard(UnitToggle.Unit unit) {
         Div card = card(DashboardStyle.MILESTONE);
 
-        H4 header = new H4("Team summary");
+        H4 header = new H4("Comparison overview");
         header.getStyle().set("margin", "0 0 12px 0").set("color", DashboardStyle.MILESTONE).set("font-weight", "600");
+        card.add(header);
+
+        if (report.milestones().size() < 2) {
+            card.add(DashboardStyle.note("Select another milestone to compare."));
+            return card;
+        }
 
         Div tileRow = new Div(
-                VelocityStyles.kpiTile("Avg time to deliver", days(report.avgDurationDays()), true),
-                VelocityStyles.kpiTile("Milestones", String.valueOf(report.milestones().size()), false),
-                VelocityStyles.kpiTile("Avg effort", unit.format(report.avgSecondsPerMilestone()), false),
-                VelocityStyles.kpiTile("Contributors", String.valueOf(report.contributors()), false));
+                durationDelta(),
+                effortDelta(unit),
+                intensityDelta(unit),
+                teamSizeDelta(),
+                overlapStat());
         tileRow.addClassName(VelocityStyles.KPI_ROW_CLASS);
         tileRow.setWidthFull();
 
-        card.add(header, tileRow);
+        card.add(tileRow);
         return card;
+    }
+
+    /** Duration gap between the fastest and slowest dated milestone. */
+    private Div durationDelta() {
+        MilestoneVelocity fast = report.fastest().orElse(null);
+        MilestoneVelocity slow = report.slowest().orElse(null);
+        if (fast == null || slow == null) {
+            return VelocityStyles.deltaTile("Duration gap", "n/a", muted("need two dated milestones"));
+        }
+        int diff = slow.durationDays() - fast.durationDays();
+        if (diff == 0) {
+            return VelocityStyles.deltaTile("Duration gap", "0 d", muted("same duration"));
+        }
+        String ratio = ratio(slow.durationDays(), fast.durationDays());
+        return VelocityStyles.deltaTile("Duration gap", diff + " d",
+                winner(fast.key(), ratio + "× faster"));
+    }
+
+    /** Effort gap between the heaviest and lightest milestone. */
+    private Div effortDelta(UnitToggle.Unit unit) {
+        MilestoneVelocity heavy = report.heaviestByEffort().orElse(null);
+        MilestoneVelocity light = report.lightestByEffort().orElse(null);
+        if (heavy == null || light == null || heavy.totalSpentSeconds() == 0) {
+            return VelocityStyles.deltaTile("Effort gap", unit.format(0), muted("no effort logged"));
+        }
+        long diff = heavy.totalSpentSeconds() - light.totalSpentSeconds();
+        if (light.totalSpentSeconds() == 0) {
+            return VelocityStyles.deltaTile("Effort gap", unit.format(diff),
+                    winner(heavy.key(), "only one with effort"));
+        }
+        if (diff == 0) {
+            return VelocityStyles.deltaTile("Effort gap", unit.format(0), muted("same effort"));
+        }
+        long pct = Math.round((diff) * 100.0 / light.totalSpentSeconds());
+        return VelocityStyles.deltaTile("Effort gap", unit.format(diff),
+                winner(heavy.key(), "+" + pct + "%"));
+    }
+
+    /** Intensity gap (effort per open day) between the densest and sparsest dated milestone. */
+    private Div intensityDelta(UnitToggle.Unit unit) {
+        MilestoneVelocity dense = report.densest().orElse(null);
+        MilestoneVelocity sparse = report.sparsest().orElse(null);
+        if (dense == null || sparse == null || dense.secondsPerDay() == 0) {
+            return VelocityStyles.deltaTile("Intensity", "n/a", muted("need two dated milestones"));
+        }
+        String value = unit.formatPerDay(dense.secondsPerDay());
+        if (sparse.secondsPerDay() == 0 || dense.secondsPerDay() == sparse.secondsPerDay()) {
+            return VelocityStyles.deltaTile("Intensity", value, winner(dense.key(), "densest"));
+        }
+        String ratio = ratio(dense.secondsPerDay(), sparse.secondsPerDay());
+        return VelocityStyles.deltaTile("Intensity", value, winner(dense.key(), ratio + "× denser"));
+    }
+
+    /** Team-size gap: how many people worked on the biggest vs the smallest milestone team. */
+    private Div teamSizeDelta() {
+        MilestoneVelocity most = report.mostContributors().orElse(null);
+        MilestoneVelocity fewest = report.fewestContributors().orElse(null);
+        if (most == null || fewest == null) {
+            return VelocityStyles.deltaTile("Team size", "n/a", muted("no contributors"));
+        }
+        String value = most.contributors() + " vs " + fewest.contributors();
+        int diff = most.contributors() - fewest.contributors();
+        return diff == 0
+                ? VelocityStyles.deltaTile("Team size", value, muted("same team size"))
+                : VelocityStyles.deltaTile("Team size", value, winner(most.key(), "+" + diff + " people"));
+    }
+
+    /** How many contributors worked on more than one of the selected milestones. */
+    private Div overlapStat() {
+        int shared = report.sharedContributors();
+        String on = report.milestones().size() == 2 ? "on both" : "on 2+ milestones";
+        String qualifier = shared == 0 ? "no one shared" : on;
+        return VelocityStyles.deltaTile("Shared team", String.valueOf(shared), muted(qualifier));
+    }
+
+    /** Qualifier line naming the leading milestone in its colour, followed by the delta phrase. */
+    private Span winner(String key, String phrase) {
+        Span keySpan = new Span(key);
+        keySpan.getStyle().set("font-weight", "700").set("color", colorForKey(key));
+
+        Span rest = new Span(" " + phrase);
+        rest.getStyle().set("color", DashboardStyle.MUTED);
+
+        Span line = new Span(keySpan, rest);
+        line.getStyle().set("font-size", "12px").set("white-space", "nowrap")
+                .set("overflow", "hidden").set("text-overflow", "ellipsis");
+        return line;
+    }
+
+    /** A plain muted qualifier line (no milestone named). */
+    private Span muted(String text) {
+        Span line = new Span(text);
+        line.getStyle().set("font-size", "12px").set("color", DashboardStyle.MUTED)
+                .set("white-space", "nowrap").set("overflow", "hidden").set("text-overflow", "ellipsis");
+        return line;
+    }
+
+    /** Ratio of two positive numbers, one decimal, e.g. {@code "2.8"}. */
+    private String ratio(long bigger, long smaller) {
+        return smaller > 0 ? String.format(java.util.Locale.US, "%.1f", bigger / (double) smaller) : "∞";
+    }
+
+    /** Palette colour of the milestone with the given key, matching the chart and table. */
+    private String colorForKey(String key) {
+        List<MilestoneVelocity> milestones = report.milestones();
+        for (int i = 0; i < milestones.size(); i++) {
+            if (milestones.get(i).key().equals(key)) {
+                return VelocityStyles.colorFor(i);
+            }
+        }
+        return DashboardStyle.INK;
     }
 
     // ── tabs card ───────────────────────────────────────────────────────────────
@@ -365,7 +487,7 @@ public class VelocityView extends VerticalLayout {
      */
     private Div comparisonTable(UnitToggle.Unit unit) {
         List<MilestoneVelocity> milestones = report.milestones();
-        int fastest = report.fastestDurationDays();
+        int fastest = report.fastest().map(MilestoneVelocity::durationDays).orElse(0);
 
         Div table = new Div();
         table.getStyle().set("display", "grid").set("grid-template-columns", gridColumns())

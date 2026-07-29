@@ -20,8 +20,8 @@ Se elige **un proyecto** y, dentro de él, **uno o varios milestones entregados*
 
 ### Qué preguntas de negocio responde
 
-- **¿Cuánto tarda en promedio un milestone en terminarse?** El número principal ("Avg time to deliver") es el promedio de días. La dispersión la muestra el gráfico de barras, con una línea punteada en el promedio.
-- **¿En qué se diferencian dos milestones?** El tab "Compare milestones" los pone **lado a lado** en una tabla (una columna por milestone, una fila por métrica) para leerlos línea por línea.
+- **¿En qué se diferencian los milestones de un vistazo?** El "Comparison overview" de arriba muestra los **deltas** entre ellos (cuánto más rápido, cuánto más esfuerzo, etc.), no promedios.
+- **¿En qué se diferencian en detalle?** El tab "Compare milestones" los pone **lado a lado** en una tabla (una columna por milestone, una fila por métrica) para leerlos línea por línea.
 - **¿Terminar rápido salió caro?** La tabla muestra, por milestone, su esfuerzo total y su **esfuerzo por día abierto** (intensidad): dos milestones de la misma duración con intensidades distintas implican equipos de tamaño distinto o tiempo muerto.
 - **¿Quién cargó cada entrega?** La tabla termina con un bloque de esfuerzo por persona, y el tab "Per person" desglosa la misma selección desde cada contribuidor.
 
@@ -35,7 +35,7 @@ El toggle **MD / Hours** de la toolbar cambia solo cómo se muestra el **esfuerz
 
 Qué muestra:
 
-- **Tarjeta de resumen del equipo**: cuatro cuadros — **Avg time to deliver** (el principal), **Milestones** (cuántos se comparan), **Avg effort** (esfuerzo promedio por milestone) y **Contributors**.
+- **Comparison overview**: cinco **deltas** que resumen la comparativa entre los milestones — **Duration gap** (cuánto más rápido se entregó uno, con el factor "N× faster"), **Effort gap** (cuánto más esfuerzo costó, abs y %), **Intensity** (el de mayor esfuerzo por día abierto, "N× denser"), **Team size** (contribuidores de cada uno) y **Shared team** (cuántas personas trabajaron en más de uno). El key del milestone "ganador" de cada delta va en **su color**. Con un solo milestone seleccionado, muestra un hint para agregar otro.
 - **Tab "Compare milestones"**: un **gráfico de barras** con los días de cada milestone (cada barra del **color** de su milestone, la clave abajo) y una **línea punteada con el promedio**. Debajo, una **tabla comparativa lado a lado**: una columna por milestone (con su color y su clave), y filas de métricas — duración (se resalta la más rápida), fechas de arranque y entrega, esfuerzo total, esfuerzo por día abierto y contribuidores — más un bloque de esfuerzo por persona (cada persona con lo que puso en cada milestone y su porcentaje, o "—" si no participó).
 - **Tab "Per person"**: una sección colapsable por persona, con un mini gráfico del reparto de su esfuerzo entre los milestones seleccionados y, al expandir, cuánto puso en cada milestone y **qué porcentaje del esfuerzo total del milestone** representó (cuánto de esa entrega cargó).
 
@@ -121,11 +121,27 @@ List<MilestoneVelocity> datable = datable();   // milestones con hasDuration()
 return (int) Math.round(datable.stream().mapToInt(MilestoneVelocity::durationDays).average().orElse(0));
 ```
 
-- `avgSecondsPerMilestone()`: divide por **todos** los milestones seleccionados, porque el esfuerzo se conoce aunque las fechas no.
-- `fastestDurationDays()`: mínimo de `datable()`; la tabla resalta esa fila (el milestone más rápido) en verde.
+- `avgDurationDays()`: promedio sobre `datable()`; lo usa **solo la línea del gráfico**.
 - `MilestoneVelocity.secondsPerDay()`: intensidad = esfuerzo / días abiertos.
 
-El summary usa solo `avgDurationDays()`, `avgSecondsPerMilestone()`, `milestones().size()` y `contributors()`. La mediana, el rango y la puntualidad se quitaron (la dispersión ya la muestra el gráfico; el on-time no aportaba y dependía de fechas planificadas que no siempre están cargadas).
+**Extremos para el "Comparison overview"** — cada delta es la brecha entre los extremos de la selección en una dimensión, así que con 2 milestones se reduce a A-vs-B:
+
+```java
+public Optional<MilestoneVelocity> fastest()  { return datable().stream().min(byDuration); }
+public Optional<MilestoneVelocity> slowest()  { return datable().stream().max(byDuration); }
+// + heaviestByEffort/lightestByEffort, densest/sparsest (por secondsPerDay), most/fewestContributors
+public int sharedContributors() {   // gente que trabajó en 2+ milestones (overlap)
+    return (int) perPerson.stream().filter(p -> p.milestonesParticipated() >= 2).count();
+}
+```
+
+Son todos min/max/filtros O(n) sobre listas chicas. La vista arma los 5 deltas con estos
+`Optional` (y guardas contra división por cero para los ratios/porcentajes); un `Optional`
+vacío cae en "n/a". La tabla resalta el más rápido con `fastest().map(durationDays)`.
+
+El summary ya no promedia la selección: `avgSecondsPerMilestone`, `fastestDurationDays`, la
+mediana, el rango y la puntualidad se quitaron en rondas previas (promediar dos milestones
+esconde la comparación; el on-time dependía de fechas planificadas que no siempre están).
 
 #### Cifras por persona — `PersonVelocity` + `PersonMilestoneEffort`
 
