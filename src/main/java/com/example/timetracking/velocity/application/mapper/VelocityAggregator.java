@@ -1,7 +1,9 @@
 package com.example.timetracking.velocity.application.mapper;
 
 import com.example.timetracking.milestone.domain.JiraTicket;
+import com.example.timetracking.milestone.domain.TimeConstants;
 import com.example.timetracking.milestone.domain.Worklog;
+import com.example.timetracking.velocity.application.dto.EffortBucket;
 import com.example.timetracking.velocity.application.dto.MilestoneVelocity;
 import com.example.timetracking.velocity.application.dto.PersonMilestoneEffort;
 import com.example.timetracking.velocity.application.dto.PersonVelocity;
@@ -11,6 +13,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,6 +39,9 @@ public class VelocityAggregator {
 
     private static final String UNKNOWN_AUTHOR = "Unknown";
 
+    /** Width of each effort-over-time window, in days since the milestone start. */
+    private static final int BUCKET_DAYS = 10;
+
     public VelocityReport aggregate(List<JiraTicket> milestoneTrees) {
         List<MilestoneVelocity> perMilestone = new ArrayList<>();
         Map<String, PersonAccumulator> people = new LinkedHashMap<>();
@@ -59,6 +65,7 @@ public class VelocityAggregator {
 
             LocalDate start = MilestoneDelivery.startDate(tree.metadata(), earliest(worklogs));
             LocalDate delivery = MilestoneDelivery.deliveryDate(tree.metadata(), latest(worklogs));
+            LocalDate planned = MilestoneDelivery.parseDate(tree.metadata().baselineDeliveryDate());
 
             totalSeconds += milestoneSeconds;
             perMilestone.add(new MilestoneVelocity(
@@ -68,8 +75,11 @@ public class VelocityAggregator {
                     tree.type(),
                     start,
                     delivery,
+                    planned,
                     MilestoneDelivery.durationDays(start, delivery),
                     milestoneSeconds,
+                    estimateSeconds(tree),
+                    effortBuckets(worklogs, start),
                     sortedByValueDesc(secondsByPerson)));
         }
 
@@ -82,6 +92,55 @@ public class VelocityAggregator {
             into.addAll(ticket.worklogs());
         }
         ticket.children().forEach(child -> collect(child, seenTickets, into));
+    }
+
+    /**
+     * Planned effort for the milestone's whole tree, in seconds. Prefers the up-front man-day
+     * estimate ({@code effortEstimateManDays}, rolled up); falls back to Jira's original time
+     * estimate when the custom field was never filled. {@code 0} when nothing was estimated.
+     */
+    private long estimateSeconds(JiraTicket tree) {
+        long fromManDays = Math.round(totalEffortManDays(tree) * TimeConstants.SECONDS_PER_MAN_DAY);
+        return fromManDays > 0 ? fromManDays : tree.totalOriginalEstimateSeconds();
+    }
+
+    /** Own up-front man-day estimate plus that of every descendant. */
+    private double totalEffortManDays(JiraTicket ticket) {
+        return ticket.effortEstimateManDays()
+                + ticket.children().stream().mapToDouble(this::totalEffortManDays).sum();
+    }
+
+    /**
+     * Buckets the milestone's worklogs into fixed {@value #BUCKET_DAYS}-day windows measured from
+     * its start, so the shape of effort over time can be charted. Dense and gap-filled: every
+     * window from the first to the last with effort is present (zero-effort windows included).
+     * Empty when the start date is unknown or no work was logged. Work logged before the start
+     * date is attributed to the first window rather than dropped.
+     */
+    private List<EffortBucket> effortBuckets(List<Worklog> worklogs, LocalDate start) {
+        if (start == null) {
+            return List.of();
+        }
+        Map<Integer, Long> byBucket = new HashMap<>();
+        int maxBucket = -1;
+        for (Worklog worklog : worklogs) {
+            LocalDate date = MilestoneDelivery.parseDate(worklog.startedDate());
+            if (date == null) {
+                continue;
+            }
+            int dayOffset = (int) (date.toEpochDay() - start.toEpochDay());
+            int bucket = Math.max(0, dayOffset) / BUCKET_DAYS;
+            byBucket.merge(bucket, worklog.timeSpentSeconds(), Long::sum);
+            maxBucket = Math.max(maxBucket, bucket);
+        }
+        if (maxBucket < 0) {
+            return List.of();
+        }
+        List<EffortBucket> buckets = new ArrayList<>(maxBucket + 1);
+        for (int i = 0; i <= maxBucket; i++) {
+            buckets.add(new EffortBucket(i * BUCKET_DAYS, byBucket.getOrDefault(i, 0L)));
+        }
+        return buckets;
     }
 
     /** Project of the milestone: its metadata when loaded, else the prefix of its key. */

@@ -4,6 +4,7 @@ import com.example.timetracking.milestone.application.usecase.LoadProjectsUseCas
 import com.example.timetracking.milestone.domain.JiraProject;
 import com.example.timetracking.milestone.domain.JiraTicket;
 import com.example.timetracking.milestone.ui.style.DashboardStyle;
+import com.example.timetracking.velocity.application.dto.EffortBucket;
 import com.example.timetracking.velocity.application.dto.MilestoneVelocity;
 import com.example.timetracking.velocity.application.dto.PersonMilestoneEffort;
 import com.example.timetracking.velocity.application.dto.PersonVelocity;
@@ -13,6 +14,7 @@ import com.example.timetracking.velocity.application.usecase.LoadDeliveredMilest
 import com.example.timetracking.velocity.ui.style.VelocityStyles;
 import com.example.timetracking.velocity.ui.widget.CollapsibleSection;
 import com.example.timetracking.velocity.ui.widget.ComparisonBarChart;
+import com.example.timetracking.velocity.ui.widget.EffortTimelineChart;
 import com.example.timetracking.velocity.ui.widget.Sparkline;
 import com.example.timetracking.velocity.ui.widget.UnitToggle;
 import com.example.timetracking.views.MainLayout;
@@ -39,6 +41,7 @@ import com.vaadin.flow.router.Route;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -256,7 +259,10 @@ public class VelocityView extends VerticalLayout {
         Div tileRow = new Div(
                 durationDelta(),
                 effortDelta(unit),
+                consumptionDelta(),
+                varianceDelta(unit),
                 paceDelta(unit),
+                slipDelta(),
                 teamSizeDelta());
         tileRow.addClassName(VelocityStyles.KPI_ROW_CLASS);
         tileRow.setWidthFull();
@@ -328,6 +334,47 @@ public class VelocityView extends VerticalLayout {
         return diff == 0
                 ? VelocityStyles.deltaTile("Team size", value, muted("same team size"))
                 : VelocityStyles.deltaTile("Team size", value, winner(most.key(), "+" + diff + " people"));
+    }
+
+    /** Consumption: how much of its estimate the hungriest milestone burned, vs the leanest. */
+    private Div consumptionDelta() {
+        MilestoneVelocity most = report.mostConsumed().orElse(null);
+        MilestoneVelocity least = report.leastConsumed().orElse(null);
+        if (most == null) {
+            return VelocityStyles.deltaTile("Consumption", "n/a", muted("nothing estimated"));
+        }
+        String value = most.consumptionPct() + "%";
+        String phrase = least != null && !least.key().equals(most.key())
+                ? "vs " + least.consumptionPct() + "%"
+                : most.overBudget() ? "over budget" : "of estimate";
+        return VelocityStyles.deltaTile("Consumption", value, winner(most.key(), phrase));
+    }
+
+    /** Variance: the milestone that missed its estimate by the widest margin (over or under). */
+    private Div varianceDelta(UnitToggle.Unit unit) {
+        MilestoneVelocity worst = report.estimated().stream()
+                .max(Comparator.comparingLong(m -> Math.abs(m.varianceSeconds())))
+                .orElse(null);
+        if (worst == null) {
+            return VelocityStyles.deltaTile("Variance", "n/a", muted("nothing estimated"));
+        }
+        long variance = worst.varianceSeconds();
+        long pct = Math.round(Math.abs(variance) * 100.0 / worst.estimateSeconds());
+        String direction = variance > 0 ? "over" : variance < 0 ? "under" : "on";
+        String phrase = direction + " (" + (variance >= 0 ? "+" : "-") + pct + "%)";
+        return VelocityStyles.deltaTile("Variance", signed(variance, unit), winner(worst.key(), phrase));
+    }
+
+    /** Schedule slip: how far the latest-slipping milestone's delivery moved past its plan. */
+    private Div slipDelta() {
+        MilestoneVelocity slipped = report.mostSlipped().orElse(null);
+        if (slipped == null) {
+            return VelocityStyles.deltaTile("Schedule slip", "n/a", muted("no planned dates"));
+        }
+        int days = slipped.scheduleSlipDays();
+        String value = (days > 0 ? "+" : "") + days + " d";
+        String phrase = days > 0 ? "pushed later" : days < 0 ? "ahead of plan" : "on plan";
+        return VelocityStyles.deltaTile("Schedule slip", value, winner(slipped.key(), phrase));
     }
 
     /** Qualifier line naming the leading milestone in its colour, followed by the delta phrase. */
@@ -430,8 +477,38 @@ public class VelocityView extends VerticalLayout {
             return wrapper;
         }
 
-        wrapper.add(durationChart(), comparisonTable(unit));
+        wrapper.add(effortTimelineSection(unit), durationChart(), comparisonTable(unit));
         return wrapper;
+    }
+
+    /**
+     * The hero chart: effort logged over time, one line per milestone, aligned by days since each
+     * milestone's own start so runs from different periods overlay directly. Skipped when no
+     * milestone has dated worklogs to plot (the duration chart still shows below).
+     */
+    private Component effortTimelineSection(UnitToggle.Unit unit) {
+        List<MilestoneVelocity> milestones = report.milestones();
+        List<EffortTimelineChart.Series> series = new ArrayList<>();
+        for (int i = 0; i < milestones.size(); i++) {
+            MilestoneVelocity milestone = milestones.get(i);
+            if (!milestone.effortOverTime().isEmpty()) {
+                List<Long> seconds = milestone.effortOverTime().stream().map(EffortBucket::seconds).toList();
+                series.add(new EffortTimelineChart.Series(milestone.key(), seconds, VelocityStyles.colorFor(i)));
+            }
+        }
+        if (series.isEmpty()) {
+            return new Div();
+        }
+
+        Div section = new Div(
+                DashboardStyle.note("Effort logged per 10-day window since each milestone's start"),
+                new EffortTimelineChart(series, 10, unit::format));
+        section.getStyle()
+                .set("margin-bottom", "16px")
+                .set("display", "flex")
+                .set("flex-direction", "column")
+                .set("gap", "6px");
+        return section;
     }
 
     /**
@@ -493,7 +570,12 @@ public class VelocityView extends VerticalLayout {
         addRow(table, "Duration", milestones, m -> durationCell(m, fastest), false);
         addRow(table, "Started", milestones, m -> textCell(date(m.startDate())), false);
         addRow(table, "Delivered", milestones, m -> textCell(date(m.deliveryDate())), false);
-        addRow(table, "Total effort", milestones, m -> textCell(unit.format(m.totalSpentSeconds())), true);
+        addRow(table, "Planned delivery", milestones, m -> textCell(date(m.plannedDeliveryDate())), true);
+        addRow(table, "Schedule slip", milestones, this::slipCell, true);
+        addRow(table, "Total effort", milestones, m -> textCell(unit.format(m.totalSpentSeconds())), false);
+        addRow(table, "Estimate", milestones, m -> textCell(m.hasEstimate() ? unit.format(m.estimateSeconds()) : "n/a"), true);
+        addRow(table, "Consumption", milestones, this::consumptionCell, true);
+        addRow(table, "Variance", milestones, m -> varianceCell(m, unit), false);
         addRow(table, "Effort per day open", milestones, m -> textCell(unit.formatPerDay(m.secondsPerDay())), false);
         addRow(table, "Contributors", milestones, m -> textCell(String.valueOf(m.contributors())), true);
 
@@ -550,6 +632,42 @@ public class VelocityView extends VerticalLayout {
         if (milestone.hasDuration() && milestone.durationDays() == fastest) {
             cell.getStyle().set("color", DashboardStyle.ON_TRACK).set("font-weight", "700");
         }
+        return cell;
+    }
+
+    /** Consumption %: red and bold when the milestone burned past its estimate. */
+    private Div consumptionCell(MilestoneVelocity milestone) {
+        if (!milestone.hasEstimate()) {
+            return textCell("n/a");
+        }
+        Div cell = textCell(milestone.consumptionPct() + "%");
+        if (milestone.overBudget()) {
+            cell.getStyle().set("color", DashboardStyle.OVER).set("font-weight", "700");
+        }
+        return cell;
+    }
+
+    /** Effort variance vs estimate: red when over budget, green when under. */
+    private Div varianceCell(MilestoneVelocity milestone, UnitToggle.Unit unit) {
+        if (!milestone.hasEstimate()) {
+            return textCell("n/a");
+        }
+        long variance = milestone.varianceSeconds();
+        Div cell = textCell(signed(variance, unit));
+        cell.getStyle().set("color",
+                variance > 0 ? DashboardStyle.OVER : variance < 0 ? DashboardStyle.ON_TRACK : DashboardStyle.MUTED);
+        return cell;
+    }
+
+    /** Schedule slip in days: red when late, green when early. */
+    private Div slipCell(MilestoneVelocity milestone) {
+        if (!milestone.hasPlannedDelivery()) {
+            return textCell("n/a");
+        }
+        int days = milestone.scheduleSlipDays();
+        Div cell = textCell((days > 0 ? "+" : "") + days + " d");
+        cell.getStyle().set("color",
+                days > 0 ? DashboardStyle.OVER : days < 0 ? DashboardStyle.ON_TRACK : DashboardStyle.MUTED);
         return cell;
     }
 
@@ -718,6 +836,11 @@ public class VelocityView extends VerticalLayout {
     /** "35%" of a total, or "—" when there is no total to compare against. */
     private String share(long seconds, long total) {
         return total > 0 ? Math.round(seconds * 100.0 / total) + "%" : "—";
+    }
+
+    /** Effort with an explicit sign, e.g. {@code "+3.5 MD"} / {@code "-1.0 MD"}. */
+    private String signed(long seconds, UnitToggle.Unit unit) {
+        return (seconds < 0 ? "-" : "+") + unit.format(Math.abs(seconds));
     }
 
     /** White rounded card; a non-null accent colour adds a coloured left edge. */

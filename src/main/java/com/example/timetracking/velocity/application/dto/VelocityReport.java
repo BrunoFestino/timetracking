@@ -90,4 +90,33 @@ public record VelocityReport(
     public Optional<MilestoneVelocity> fewestContributors() {
         return milestones.stream().min(Comparator.comparingInt(MilestoneVelocity::contributors));
     }
+
+    // ── estimate / schedule extremes, for the comparison overview ──────────────
+
+    /** Milestones carrying a planned-effort estimate — the ones consumption/variance come from. */
+    public List<MilestoneVelocity> estimated() {
+        return milestones.stream().filter(MilestoneVelocity::hasEstimate).toList();
+    }
+
+    /** Planned effort summed across the selection, in seconds. */
+    public long totalEstimateSeconds() {
+        return milestones.stream().mapToLong(MilestoneVelocity::estimateSeconds).sum();
+    }
+
+    /** Milestone that consumed the largest share of its estimate (most over/least under budget). */
+    public Optional<MilestoneVelocity> mostConsumed() {
+        return estimated().stream().max(Comparator.comparingLong(MilestoneVelocity::consumptionPct));
+    }
+
+    /** Milestone that consumed the smallest share of its estimate. */
+    public Optional<MilestoneVelocity> leastConsumed() {
+        return estimated().stream().min(Comparator.comparingLong(MilestoneVelocity::consumptionPct));
+    }
+
+    /** Milestone whose actual delivery slipped furthest past its planned date. */
+    public Optional<MilestoneVelocity> mostSlipped() {
+        return milestones.stream()
+                .filter(MilestoneVelocity::hasPlannedDelivery)
+                .max(Comparator.comparingInt(MilestoneVelocity::scheduleSlipDays));
+    }
 }
