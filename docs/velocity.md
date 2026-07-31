@@ -35,8 +35,11 @@ El toggle **MD / Hours** de la toolbar cambia solo cómo se muestra el **esfuerz
 
 Qué muestra:
 
-- **Comparison overview**: una fila de **deltas** enfocados en velocidad del equipo — **Duration gap** (cuánto más rápido se entregó uno, "N× faster"), **Effort gap** (cuánto más esfuerzo costó, abs y %), **Effective pace** (esfuerzo por **día activo** del más veloz, "N× faster"), **Throughput** (esfuerzo por semana, "N× more"), **Schedule slip** (días que se corrió la entrega respecto de la fecha planificada) y **Team size** (contribuidores de cada uno). El key del milestone "ganador" de cada delta va en **su color**. Con un solo milestone seleccionado, muestra un hint para agregar otro.
-- **Tab "Compare milestones"**: arriba, el gráfico héroe **Effort over time** — una **línea por milestone** con el esfuerzo logueado por **semana** desde el arranque de cada uno (alineados por días-desde-su-inicio, no por calendario, así dos corridas de épocas distintas se superponen; eje X con etiquetas cada ~semana/dos semanas), cada línea en el **color** de su milestone. Debajo, el **gráfico de barras** de días de cada milestone (con **línea punteada del promedio**) y una **tabla comparativa lado a lado**: una columna por milestone, y filas de métricas — duración (se resalta la más rápida), fechas de arranque/entrega, **fecha planificada** y **desvío de cronograma**, esfuerzo total, **estimado**, **consumo %** (rojo si pasó el estimado), **varianza** (rojo over / verde under), **días activos**, **esfuerzo por día activo**, **esfuerzo por semana**, esfuerzo por día abierto y contribuidores — más un bloque de esfuerzo por persona (cada persona con lo que puso en cada milestone y su porcentaje, o "—" si no participó).
+- **Comparison overview**: depende de cuántos milestones se comparen.
+  - **Con dos milestones** (el caso principal), un **head-to-head M1 vs M2**: arriba, un **veredicto** en lenguaje claro que sintetiza el trade-off ("M1 entregó 2.3× más rápido, y con menos esfuerzo" / "…, pero a +45% de esfuerzo"); debajo, una fila por métrica de velocidad — **Duration, Total effort, Effective pace, Throughput, Schedule slip, Team size** — con el valor de cada milestone lado a lado. El lado "mejor en velocidad" (menos días / más pace / más throughput / menos slip) se resalta **en el color de su milestone**; en esfuerzo y team size se marca neutro qué lado gastó más / tuvo más gente (más no es "mejor", es costo — lo interpreta el veredicto).
+  - **Con tres o más**, la fila de **deltas** entre extremos de la selección — **Duration gap** ("N× faster"), **Effort gap** (abs y %), **Effective pace** ("N× faster"), **Throughput** ("N× more"), **Schedule slip** y **Team size** — con el key "ganador" de cada delta en **su color**.
+  - **Con uno**, un hint para agregar otro.
+- **Tab "Compare milestones"**: arriba, el gráfico héroe **Effort over time** — una **línea por milestone** con el esfuerzo logueado por **semana** desde el arranque de cada uno (alineados por días-desde-su-inicio, no por calendario, así dos corridas de épocas distintas se superponen; eje X con etiquetas cada ~semana/dos semanas), cada línea en el **color** de su milestone. Un toggle **Share % / Absolute** cambia el eje Y: en **Share** cada línea se escala a **su propio pico** (100%), así las *formas* de cadencia se comparan sin que el milestone más grande aplaste al resto; en **Absolute** el eje va en MD/h contra un máximo compartido. Debajo, el **trade-off scatter** — cada milestone como un punto por **duración (x, izquierda = más rápido)** vs **esfuerzo (y, arriba = más)**, así "rápido y barato" (abajo-izquierda) vs "lento y caro" (arriba-derecha) se lee de un vistazo. Luego el **gráfico de barras** de días de cada milestone (con **línea punteada del promedio**) y una **tabla comparativa lado a lado**: una columna por milestone, y filas de métricas — duración (se resalta la más rápida), fechas de arranque/entrega, **fecha planificada** y **desvío de cronograma**, esfuerzo total, **estimado**, **consumo %** (rojo si pasó el estimado), **varianza** (rojo over / verde under), **días activos**, **esfuerzo por día activo**, **esfuerzo por semana**, esfuerzo por día abierto y contribuidores — más un bloque de esfuerzo por persona (cada persona con lo que puso en cada milestone y su porcentaje, o "—" si no participó).
 - **Tab "Per person"**: una sección colapsable por persona, con un mini gráfico del reparto de su esfuerzo entre los milestones seleccionados y, al expandir, cuánto puso en cada milestone y **qué porcentaje del esfuerzo total del milestone** representó (cuánto de esa entrega cargó).
 
 El mismo milestone lleva **el mismo color** en el gráfico y en su columna de la tabla, para identificarlo de un vistazo.
@@ -68,7 +71,7 @@ El feature vive en `src/main/java/com/example/timetracking/velocity/`, con capas
 | `application/mapper/` | `MilestoneDelivery` (reglas de entrega), `VelocityAggregator` — cálculo puro, sin dependencias de Jira ni de UI |
 | `application/dto/` | Records inmutables: `VelocityReport`, `MilestoneVelocity`, `PersonVelocity`, `PersonMilestoneEffort`, `EffortBucket` |
 | `ui/style/` | `VelocityStyles` — stylesheet inyectada, empty-state, KPI tiles y la **paleta por milestone** (`colorFor`) |
-| `ui/widget/` | Widgets de CSS puro: `ComparisonBarChart`, `Sparkline`, `UnitToggle`, `CollapsibleSection` |
+| `ui/widget/` | `EffortTimelineChart` (SVG héroe); widgets de CSS puro `TradeoffScatter`, `ComparisonBarChart`, `Sparkline`; `UnitToggle`, `CollapsibleSection` |
 
 Dirección de dependencias: `velocity` depende del feature `milestone` (loaders, dominio, estilos) y de `shared/jira`; **nada depende de velocity**. Es una capa de solo lectura/analítica sobre los mismos datos de Jira que usa la vista Milestone.
 
@@ -178,13 +181,26 @@ esfuerzo en el tiempo, que necesita geometría de líneas y ejes y por eso se ar
 
 - **`EffortTimelineChart`** (el gráfico héroe): construye un **string SVG** (líneas, ejes,
   gridlines) y lo renderiza como imagen vía `DashboardStyle.svgImage(svg, alt)` — el único
-  camino a vectores reales en el feature, ya que no hay librería de charts. Una **polyline por
-  milestone** en su `colorFor`, alineadas por índice de bucket (= semanas desde el arranque de cada
-  milestone), escaladas al máximo global de esfuerzo por ventana; eje Y (0/50/100% del máximo,
-  formateados en MD/h) y eje X con **gridline + etiqueta de día en ~8 buckets equiespaciados**
-  (`step = ceil(buckets / 8)`), para leer la cadencia semanal en milestones cortos y largos. Al ser
-  un `<img>` no tiene tooltips DOM, así que lleva una **leyenda** (swatch + clave) en DOM real
-  debajo. Un milestone sin worklogs fechados no aporta serie; si ninguno tiene, la sección se omite.
+  camino a vectores reales en el feature, ya que no hay librería de charts. El `<svg>` declara
+  `width`/`height` explícitos **además** del `viewBox`, para que el `<img>` tenga dimensiones
+  intrínsecas (si no, con `height:auto` colapsa a 0 y no se ve). Una **polyline por milestone** en
+  su `colorFor`, alineadas por índice de bucket (= semanas desde el arranque de cada milestone);
+  eje X con **gridline + etiqueta de día en ~8 buckets equiespaciados** (`step = ceil(buckets / 8)`),
+  para leer la cadencia semanal en milestones cortos y largos. El **eje Y tiene dos modos**
+  (`Scale`): en **`ABSOLUTE`** las series se escalan al **máximo global** de esfuerzo por ventana y
+  el eje va en MD/h (las magnitudes comparan, pero un milestone grande aplasta al resto); en
+  **`SHARE`** cada serie se escala a **su propio pico** (100%) y el eje va en **%** (las *formas* de
+  cadencia comparan sin importar el tamaño). El modo lo controla un toggle de la vista y se preserva
+  entre renders. Al ser un `<img>` no tiene tooltips DOM, así que lleva una **leyenda** (swatch +
+  clave) en DOM real debajo. Un milestone sin worklogs fechados no aporta serie; si ninguno tiene,
+  la sección se omite.
+- **`TradeoffScatter`**: el gráfico de trade-off, **CSS puro** (sin SVG-as-`<img>`, patrón
+  `ComparisonBarChart`/`Sparkline`). Cada milestone es un **dot** posicionado en una caja relativa
+  por **duración (x, izquierda = más rápido)** y **esfuerzo (y, arriba = más)**, normalizando cada
+  eje al min/max de la selección con padding (banda `[12%, 88%]`) para que los dots no toquen los
+  bordes; cada dot en el `colorFor` de su milestone, con su key al lado y tooltip con duración +
+  esfuerzo. Captions de eje ("← faster / slower →", "↑ more effort"). Los milestones sin duración
+  medible no se ubican y se listan como "Not dated: …". Sin puntos fechados → `emptyState`.
 - **`ComparisonBarChart`**: área de 140 px con una barra por milestone que escala dentro de 118 px (`BAR_AREA_PX`, deja lugar al valor arriba de cada barra). Cada `Column` lleva su **color** (el del milestone, vía `VelocityStyles.colorFor`); un color `null` cae al color por defecto. La escala usa `max(promedio, máximo de las columnas)` para que la línea de promedio siempre entre en el gráfico. La línea de referencia es solo el **promedio**: un `Div` absoluto con `border-top: 1px dashed` en `bottom = round(avg * 118 / max)` px, con su etiqueta ("avg N days") a la derecha. Una columna sin duración medible conserva su lugar con la etiqueta `n/a` y sin barra.
 - **Tabla comparativa** (`VelocityView.comparisonTable`): un CSS grid `minmax(150px,200px) repeat(N, minmax(150px,1fr))` dentro de un contenedor con `overflow-x: auto`. Header con una columna por milestone (borde superior en su color + clave + nombre); filas de métricas construidas con `addRow(...)` (una función `MilestoneVelocity → celda` por fila); la fila de duración resalta el más rápido en verde; el bloque "Effort per person" agrega una fila por persona con su esfuerzo y % en cada milestone. Todo desde el `VelocityReport` ya computado.
 - **`Sparkline`**: flexbox de barras finitas, altura porcentual sobre el máximo, tooltip por barra. En el tab "Per person" muestra el reparto del esfuerzo de esa persona entre los milestones seleccionados.
@@ -213,5 +229,5 @@ esfuerzo en el tiempo, que necesita geometría de líneas y ejes y por eso se ar
 - `velocity/VelocityView.java` — UI: selección de proyecto, resumen, gráfico + tabla comparativa, tab por persona
 - `velocity/application/usecase/ComputeVelocityUseCase.java` / `LoadDeliveredMilestonesUseCase.java`
 - `velocity/application/mapper/VelocityAggregator.java` / `MilestoneDelivery.java`
-- `velocity/ui/style/VelocityStyles.java` (paleta), `velocity/ui/widget/EffortTimelineChart.java` (SVG héroe), `ComparisonBarChart.java`, `Sparkline.java`
+- `velocity/ui/style/VelocityStyles.java` (paleta), `velocity/ui/widget/EffortTimelineChart.java` (SVG héroe, modo Absolute/Share), `TradeoffScatter.java` (trade-off duración↔esfuerzo, CSS puro), `ComparisonBarChart.java`, `Sparkline.java`
 - `milestone/application/usecase/LoadMilestoneDetailsUseCase.java`, `shared/config/CacheConfig.java`, `milestone/application/cache/MilestonesCacheEviction.java`

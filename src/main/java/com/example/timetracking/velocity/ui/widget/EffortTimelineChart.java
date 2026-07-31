@@ -28,6 +28,14 @@ public class EffortTimelineChart extends Div {
     public record Series(String key, List<Long> bucketSeconds, String color) {
     }
 
+    /**
+     * Y-axis scaling. {@code ABSOLUTE} plots raw effort against a shared axis (magnitudes compare,
+     * but a large milestone dominates and flattens the rest). {@code SHARE} normalises every line to
+     * <em>its own peak window</em> (that milestone's busiest window = 100%), so the lines overlay and
+     * the <em>cadence shape</em> compares directly regardless of milestone size.
+     */
+    public enum Scale {ABSOLUTE, SHARE}
+
     private static final int W = 720;
     private static final int H = 260;
     private static final int ML = 54;
@@ -41,9 +49,10 @@ public class EffortTimelineChart extends Div {
     /**
      * @param series    one line per milestone (dense, gap-filled effort windows)
      * @param bucketDays width of each window in days, for the x-axis labels
-     * @param format    seconds → display string (MD/hours), for the y-axis labels
+     * @param format    seconds → display string (MD/hours), for the y-axis labels (ABSOLUTE only)
+     * @param scale     {@link Scale#ABSOLUTE} (raw effort) or {@link Scale#SHARE} (per-line, % of peak)
      */
-    public EffortTimelineChart(List<Series> series, int bucketDays, LongFunction<String> format) {
+    public EffortTimelineChart(List<Series> series, int bucketDays, LongFunction<String> format, Scale scale) {
         setWidthFull();
 
         int maxBuckets = series.stream().mapToInt(s -> s.bucketSeconds().size()).max().orElse(0);
@@ -53,7 +62,7 @@ public class EffortTimelineChart extends Div {
                 .max().orElse(0L);
 
         Image chart = DashboardStyle.svgImage(
-                buildSvg(series, maxBuckets, Math.max(1L, maxSeconds), bucketDays, format),
+                buildSvg(series, maxBuckets, Math.max(1L, maxSeconds), bucketDays, format, scale),
                 "Effort logged per " + bucketDays + "-day window since start");
         chart.getStyle().set("width", "100%").set("max-width", W + "px").set("height", "auto")
                 .set("display", "block");
@@ -62,7 +71,7 @@ public class EffortTimelineChart extends Div {
     }
 
     private String buildSvg(List<Series> series, int maxBuckets, long maxSeconds,
-                            int bucketDays, LongFunction<String> format) {
+                            int bucketDays, LongFunction<String> format, Scale scale) {
         int denom = Math.max(1, maxBuckets - 1);
         int maxDay = Math.max(0, maxBuckets - 1) * bucketDays;
 
@@ -78,9 +87,12 @@ public class EffortTimelineChart extends Div {
             svg.append("<line x1='").append(ML).append("' y1='").append(y)
                     .append("' x2='").append(ML + PLOT_W).append("' y2='").append(y)
                     .append("' stroke='").append(DashboardStyle.REMAINING).append("' stroke-width='1'/>");
+            String yLabel = scale == Scale.SHARE
+                    ? Math.round(frac * 100) + "%"
+                    : format.apply(Math.round(maxSeconds * frac));
             svg.append("<text x='").append(ML - 8).append("' y='").append(y + 3)
                     .append("' text-anchor='end' font-size='10' fill='").append(DashboardStyle.MUTED)
-                    .append("'>").append(esc(format.apply(Math.round(maxSeconds * frac)))).append("</text>");
+                    .append("'>").append(esc(yLabel)).append("</text>");
         }
 
         // x-axis: a vertical gridline + day label at each of ~8 evenly-spaced buckets
@@ -96,22 +108,26 @@ public class EffortTimelineChart extends Div {
         }
 
         for (Series s : series) {
-            appendSeries(svg, s, denom, maxSeconds);
+            appendSeries(svg, s, denom, maxSeconds, scale);
         }
 
         svg.append("</svg>");
         return svg.toString();
     }
 
-    private void appendSeries(StringBuilder svg, Series s, int denom, long maxSeconds) {
+    private void appendSeries(StringBuilder svg, Series s, int denom, long maxSeconds, Scale scale) {
         List<Long> values = s.bucketSeconds();
         if (values.isEmpty()) {
             return;
         }
+        // ABSOLUTE: one shared divisor (magnitudes compare). SHARE: this line's own peak (shapes compare).
+        long divisor = scale == Scale.SHARE
+                ? Math.max(1L, values.stream().mapToLong(Long::longValue).max().orElse(0L))
+                : maxSeconds;
         StringBuilder points = new StringBuilder();
         for (int i = 0; i < values.size(); i++) {
             int x = (int) Math.round(ML + (values.size() == 1 ? 0 : (double) i / denom) * PLOT_W);
-            int y = (int) Math.round(BASE_Y - (values.get(i) / (double) maxSeconds) * PLOT_H);
+            int y = (int) Math.round(BASE_Y - (values.get(i) / (double) divisor) * PLOT_H);
             points.append(x).append(',').append(y).append(' ');
         }
         String trimmed = points.toString().trim();

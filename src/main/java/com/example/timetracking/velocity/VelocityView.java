@@ -16,6 +16,7 @@ import com.example.timetracking.velocity.ui.widget.CollapsibleSection;
 import com.example.timetracking.velocity.ui.widget.ComparisonBarChart;
 import com.example.timetracking.velocity.ui.widget.EffortTimelineChart;
 import com.example.timetracking.velocity.ui.widget.Sparkline;
+import com.example.timetracking.velocity.ui.widget.TradeoffScatter;
 import com.example.timetracking.velocity.ui.widget.UnitToggle;
 import com.example.timetracking.views.MainLayout;
 import com.vaadin.flow.component.Component;
@@ -35,6 +36,7 @@ import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.tabs.Tab;
 import com.vaadin.flow.component.tabs.Tabs;
+import com.vaadin.flow.component.tabs.TabsVariant;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 
@@ -65,6 +67,8 @@ public class VelocityView extends VerticalLayout {
     private final Div results = new Div();
 
     private transient VelocityReport report;
+    /** Y-axis scaling of the effort-over-time chart; toggled in the Compare tab, kept across renders. */
+    private EffortTimelineChart.Scale timelineScale = EffortTimelineChart.Scale.SHARE;
 
     public VelocityView(LoadProjectsUseCase loadProjectsUseCase,
                         LoadDeliveredMilestonesUseCase loadDeliveredMilestonesUseCase,
@@ -250,8 +254,15 @@ public class VelocityView extends VerticalLayout {
         header.getStyle().set("margin", "0 0 12px 0").set("color", DashboardStyle.MILESTONE).set("font-weight", "600");
         card.add(header);
 
-        if (report.milestones().size() < 2) {
+        List<MilestoneVelocity> ms = report.milestones();
+        if (ms.size() < 2) {
             card.add(DashboardStyle.note("Select another milestone to compare."));
+            return card;
+        }
+        // The primary use case is exactly two milestones: show them head-to-head with a plain-language
+        // verdict of the trade-off. For three or more, fall back to the per-dimension delta tiles.
+        if (ms.size() == 2) {
+            card.add(verdict(ms.get(0), ms.get(1), unit), headToHead(ms.get(0), ms.get(1), unit));
             return card;
         }
 
@@ -267,6 +278,186 @@ public class VelocityView extends VerticalLayout {
 
         card.add(tileRow);
         return card;
+    }
+
+    // ── head-to-head (exactly two milestones) ──────────────────────────────────
+
+    /**
+     * A plain-language read of the two-milestone trade-off, e.g. "TTAR-1 delivered 2.3× faster, but
+     * at +45% effort." Leads with speed (duration); if durations tie or are undatable, falls back to
+     * effective pace; if neither can be compared, a muted hint.
+     */
+    private Div verdict(MilestoneVelocity a, MilestoneVelocity b, UnitToggle.Unit unit) {
+        Div banner = new Div();
+        banner.getStyle()
+                .set("padding", "10px 14px").set("margin-bottom", "14px")
+                .set("background", "#F8FAFB").set("border-radius", "8px")
+                .set("border-left", "3px solid " + DashboardStyle.MILESTONE)
+                .set("font-size", "15px").set("line-height", "1.5").set("color", DashboardStyle.INK);
+
+        boolean bothDated = a.hasDuration() && b.hasDuration();
+        if (bothDated && a.durationDays() != b.durationDays()) {
+            MilestoneVelocity fast = a.durationDays() < b.durationDays() ? a : b;
+            MilestoneVelocity slow = fast == a ? b : a;
+            banner.add(keyBadge(fast.key()), plain(" delivered "),
+                    strong(ratio(slow.durationDays(), fast.durationDays()) + "× faster"));
+            if (fast.totalSpentSeconds() <= slow.totalSpentSeconds()) {
+                banner.add(plain(" and for less effort."));
+            } else if (slow.totalSpentSeconds() > 0) {
+                long pctMore = Math.round((fast.totalSpentSeconds() - slow.totalSpentSeconds())
+                        * 100.0 / slow.totalSpentSeconds());
+                banner.add(plain(", but at "), strong("+" + pctMore + "% effort."));
+            } else {
+                banner.add(plain("."));
+            }
+            return banner;
+        }
+
+        if (a.hasActiveDays() && b.hasActiveDays()
+                && a.effectivePaceSeconds() != b.effectivePaceSeconds()) {
+            MilestoneVelocity hi = a.effectivePaceSeconds() > b.effectivePaceSeconds() ? a : b;
+            MilestoneVelocity lo = hi == a ? b : a;
+            banner.add(keyBadge(hi.key()), plain(" kept a "),
+                    strong(ratio(hi.effectivePaceSeconds(), lo.effectivePaceSeconds()) + "× higher"),
+                    plain(" pace per active day."));
+            return banner;
+        }
+
+        banner.getStyle().set("color", DashboardStyle.MUTED).set("font-size", "14px");
+        banner.setText("Need two dated milestones to compare velocity.");
+        return banner;
+    }
+
+    /**
+     * M1-vs-M2 comparison strip: each velocity metric with both values side by side, the better side
+     * emphasised in its milestone colour. Effort and team size mark the larger side neutrally (more
+     * effort/people is cost, not "better" — the verdict above interprets the trade-off).
+     */
+    private Div headToHead(MilestoneVelocity a, MilestoneVelocity b, UnitToggle.Unit unit) {
+        Div grid = new Div();
+        grid.getStyle()
+                .set("display", "grid")
+                .set("grid-template-columns", "1fr auto 1fr")
+                .set("align-items", "center")
+                .set("column-gap", "12px").set("row-gap", "0").set("width", "100%");
+
+        grid.add(hhHeaderCell(a, "right"), hhHeaderCenter(), hhHeaderCell(b, "left"));
+
+        boolean dated = a.hasDuration() && b.hasDuration();
+        hhRow(grid, "Duration",
+                a, days(a.durationDays()), dated && a.durationDays() < b.durationDays(),
+                b, days(b.durationDays()), dated && b.durationDays() < a.durationDays(), true);
+
+        hhRow(grid, "Total effort",
+                a, unit.format(a.totalSpentSeconds()), a.totalSpentSeconds() > b.totalSpentSeconds(),
+                b, unit.format(b.totalSpentSeconds()), b.totalSpentSeconds() > a.totalSpentSeconds(), false);
+
+        boolean pace = a.hasActiveDays() && b.hasActiveDays();
+        hhRow(grid, "Effective pace",
+                a, a.hasActiveDays() ? unit.formatPerDay(a.effectivePaceSeconds()) : "n/a",
+                pace && a.effectivePaceSeconds() > b.effectivePaceSeconds(),
+                b, b.hasActiveDays() ? unit.formatPerDay(b.effectivePaceSeconds()) : "n/a",
+                pace && b.effectivePaceSeconds() > a.effectivePaceSeconds(), true);
+
+        boolean thr = a.hasDuration() && b.hasDuration();
+        hhRow(grid, "Throughput",
+                a, a.hasDuration() ? unit.format(a.effortThroughputSecondsPerWeek()) + "/wk" : "n/a",
+                thr && a.effortThroughputSecondsPerWeek() > b.effortThroughputSecondsPerWeek(),
+                b, b.hasDuration() ? unit.format(b.effortThroughputSecondsPerWeek()) + "/wk" : "n/a",
+                thr && b.effortThroughputSecondsPerWeek() > a.effortThroughputSecondsPerWeek(), true);
+
+        boolean slip = a.hasPlannedDelivery() && b.hasPlannedDelivery();
+        hhRow(grid, "Schedule slip",
+                a, a.hasPlannedDelivery() ? slipText(a.scheduleSlipDays()) : "n/a",
+                slip && a.scheduleSlipDays() < b.scheduleSlipDays(),
+                b, b.hasPlannedDelivery() ? slipText(b.scheduleSlipDays()) : "n/a",
+                slip && b.scheduleSlipDays() < a.scheduleSlipDays(), true);
+
+        hhRow(grid, "Team size",
+                a, a.contributors() + (a.contributors() == 1 ? " person" : " people"),
+                a.contributors() > b.contributors(),
+                b, b.contributors() + (b.contributors() == 1 ? " person" : " people"),
+                b.contributors() > a.contributors(), false);
+
+        return grid;
+    }
+
+    /** Adds one head-to-head row: value A | metric label | value B, emphasising the marked side. */
+    private void hhRow(Div grid, String label,
+                       MilestoneVelocity a, String aVal, boolean aEmph,
+                       MilestoneVelocity b, String bVal, boolean bEmph, boolean colored) {
+        grid.add(hhValueCell(aVal, "right", aEmph, colored ? colorForKey(a.key()) : null));
+        grid.add(hhLabelCell(label));
+        grid.add(hhValueCell(bVal, "left", bEmph, colored ? colorForKey(b.key()) : null));
+    }
+
+    /** One side's value; emphasised (bold, in the given colour or ink) or muted when it doesn't lead. */
+    private Div hhValueCell(String text, String align, boolean emphasize, String color) {
+        Div cell = new Div();
+        cell.setText(text);
+        cell.getStyle().set("text-align", align).set("font-size", "14px")
+                .set("padding", "6px 2px").set("white-space", "nowrap")
+                .set("overflow", "hidden").set("text-overflow", "ellipsis")
+                .set("border-top", "1px solid #F0F2F4");
+        if (emphasize) {
+            cell.getStyle().set("font-weight", "700")
+                    .set("color", color != null ? color : DashboardStyle.INK);
+        } else {
+            cell.getStyle().set("color", DashboardStyle.MUTED);
+        }
+        return cell;
+    }
+
+    /** Centre metric label of a head-to-head row. */
+    private Div hhLabelCell(String label) {
+        Div cell = new Div();
+        cell.setText(label);
+        cell.getStyle().set("text-align", "center").set("font-size", "11px")
+                .set("font-weight", "600").set("text-transform", "uppercase")
+                .set("letter-spacing", "0.04em").set("color", DashboardStyle.MUTED)
+                .set("white-space", "nowrap").set("padding", "6px 8px")
+                .set("border-top", "1px solid #F0F2F4");
+        return cell;
+    }
+
+    /** Column header naming one milestone, in its colour. */
+    private Div hhHeaderCell(MilestoneVelocity milestone, String align) {
+        Span key = new Span(milestone.key());
+        key.getStyle().set("font-size", "14px").set("font-weight", "700")
+                .set("color", colorForKey(milestone.key()));
+        Div cell = new Div(key);
+        cell.getStyle().set("text-align", align).set("padding", "0 2px 6px 2px")
+                .set("white-space", "nowrap").set("overflow", "hidden").set("text-overflow", "ellipsis");
+        return cell;
+    }
+
+    private Div hhHeaderCenter() {
+        Div cell = new Div();
+        cell.getStyle().set("padding", "0 8px 6px 8px");
+        return cell;
+    }
+
+    private String slipText(int days) {
+        return (days > 0 ? "+" : "") + days + " d";
+    }
+
+    /** A milestone key styled bold in its palette colour, for the verdict banner. */
+    private Span keyBadge(String key) {
+        Span span = new Span(key);
+        span.getStyle().set("font-weight", "700").set("color", colorForKey(key));
+        return span;
+    }
+
+    /** Plain verdict text (inherits the banner's ink colour). */
+    private Span plain(String text) {
+        return new Span(text);
+    }
+
+    /** Emphasised verdict fragment (the ratio / percentage). */
+    private Span strong(String text) {
+        Span span = new Span(text);
+        span.getStyle().set("font-weight", "700");
+        return span;
     }
 
     /** Duration gap between the fastest and slowest dated milestone. */
@@ -461,7 +652,7 @@ public class VelocityView extends VerticalLayout {
             return wrapper;
         }
 
-        wrapper.add(effortTimelineSection(unit), durationChart(), comparisonTable(unit));
+        wrapper.add(effortTimelineSection(unit), tradeoffSection(unit), durationChart(), comparisonTable(unit));
         return wrapper;
     }
 
@@ -486,9 +677,68 @@ public class VelocityView extends VerticalLayout {
 
         int bucketDays = bucketWidthDays(milestones);
         String window = bucketDays == 7 ? "week" : bucketDays + "-day window";
+        boolean share = timelineScale == EffortTimelineChart.Scale.SHARE;
+        String note = share
+                ? "Effort per " + window + " since each milestone's start — each line scaled to its own peak, so cadence shapes compare"
+                : "Effort logged per " + window + " since each milestone's start";
+
+        Div header = new Div(DashboardStyle.note(note), scaleToggle());
+        header.getStyle()
+                .set("display", "flex").set("justify-content", "space-between")
+                .set("align-items", "center").set("gap", "12px").set("flex-wrap", "wrap");
+
+        Div section = new Div(header, new EffortTimelineChart(series, bucketDays, unit::format, timelineScale));
+        section.getStyle()
+                .set("margin-bottom", "16px")
+                .set("display", "flex")
+                .set("flex-direction", "column")
+                .set("gap", "6px");
+        return section;
+    }
+
+    /**
+     * Absolute ↔ Share (%) toggle for the effort-over-time chart. Selection is set before the change
+     * listener is attached, so re-rendering (which rebuilds this control) never re-fires it.
+     */
+    private Tabs scaleToggle() {
+        Tab shareTab = new Tab("Share %");
+        Tab absoluteTab = new Tab("Absolute");
+        Tabs toggle = new Tabs(shareTab, absoluteTab);
+        toggle.addThemeVariants(TabsVariant.LUMO_SMALL);
+        toggle.setSelectedTab(timelineScale == EffortTimelineChart.Scale.SHARE ? shareTab : absoluteTab);
+        toggle.addSelectedChangeListener(event -> {
+            timelineScale = event.getSelectedTab() == shareTab
+                    ? EffortTimelineChart.Scale.SHARE
+                    : EffortTimelineChart.Scale.ABSOLUTE;
+            render();
+        });
+        return toggle;
+    }
+
+    /**
+     * The trade-off view: each milestone as a dot by duration (x, left = faster) against effort
+     * (y, higher = more), so fast-and-cheap vs slow-and-expensive reads at a glance. Shown only with
+     * at least two milestones to place against each other.
+     */
+    private Component tradeoffSection(UnitToggle.Unit unit) {
+        List<MilestoneVelocity> milestones = report.milestones();
+        if (milestones.size() < 2) {
+            return new Div();
+        }
+        List<TradeoffScatter.Point> points = new ArrayList<>();
+        for (int i = 0; i < milestones.size(); i++) {
+            MilestoneVelocity milestone = milestones.get(i);
+            points.add(new TradeoffScatter.Point(
+                    milestone.key(),
+                    milestone.durationDays(),
+                    milestone.totalSpentSeconds(),
+                    VelocityStyles.colorFor(i),
+                    label(milestone.key(), milestone.name()) + ": " + days(milestone.durationDays())
+                            + " · " + unit.format(milestone.totalSpentSeconds())));
+        }
         Div section = new Div(
-                DashboardStyle.note("Effort logged per " + window + " since each milestone's start"),
-                new EffortTimelineChart(series, bucketDays, unit::format));
+                DashboardStyle.note("Duration vs effort — faster & cheaper sits bottom-left"),
+                new TradeoffScatter(points));
         section.getStyle()
                 .set("margin-bottom", "16px")
                 .set("display", "flex")
