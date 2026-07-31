@@ -23,8 +23,9 @@ import java.util.Map;
  * @param plannedDeliveryDate baseline (planned) delivery date, {@code null} when not planned
  * @param durationDays        inclusive calendar days from start to delivery; {@code 0} when unknown
  * @param totalSpentSeconds   effort logged on the whole milestone tree
- * @param estimateSeconds     planned effort for the whole tree (up-front man-day estimate, else
+ * @param estimateSeconds     planned effort for the milestone (own up-front man-day estimate, else
  *                            Jira original estimate); {@code 0} when nothing was estimated
+ * @param activeDays          distinct calendar days on which any work was logged
  * @param effortOverTime      effort bucketed into fixed windows since start, dense and gap-filled
  * @param secondsByPerson     effort per contributor, ordered by effort desc
  */
@@ -39,6 +40,7 @@ public record MilestoneVelocity(
         int durationDays,
         long totalSpentSeconds,
         long estimateSeconds,
+        int activeDays,
         List<EffortBucket> effortOverTime,
         Map<String, Long> secondsByPerson) {
 
@@ -67,6 +69,30 @@ public record MilestoneVelocity(
      */
     public long secondsPerDay() {
         return hasDuration() ? totalSpentSeconds / durationDays : 0;
+    }
+
+    // ── team velocity ──────────────────────────────────────────────────────────
+
+    /** Whether any day carried logged work, so the active-day figures are meaningful. */
+    public boolean hasActiveDays() {
+        return activeDays > 0;
+    }
+
+    /**
+     * Effective pace: effort per <em>active</em> day (a day someone logged work), so idle calendar
+     * stretches don't drag it down the way {@link #secondsPerDay()} (calendar pace) does. This is
+     * how fast the team moved when it was actually moving. {@code 0} when no work was logged.
+     */
+    public long effectivePaceSeconds() {
+        return hasActiveDays() ? totalSpentSeconds / activeDays : 0;
+    }
+
+    /**
+     * Effort throughput: effort logged per week over the delivery window — the team's sustained
+     * rate of burning effort. {@code 0} when the window could not be dated.
+     */
+    public long effortThroughputSecondsPerWeek() {
+        return hasDuration() ? Math.round(totalSpentSeconds * 7.0 / durationDays) : 0;
     }
 
     // ── estimate baseline ──────────────────────────────────────────────────────

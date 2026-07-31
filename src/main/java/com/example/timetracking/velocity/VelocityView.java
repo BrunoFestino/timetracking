@@ -41,7 +41,6 @@ import com.vaadin.flow.router.Route;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -259,9 +258,8 @@ public class VelocityView extends VerticalLayout {
         Div tileRow = new Div(
                 durationDelta(),
                 effortDelta(unit),
-                consumptionDelta(),
-                varianceDelta(unit),
-                paceDelta(unit),
+                effectivePaceDelta(unit),
+                throughputDelta(unit),
                 slipDelta(),
                 teamSizeDelta());
         tileRow.addClassName(VelocityStyles.KPI_ROW_CLASS);
@@ -307,19 +305,34 @@ public class VelocityView extends VerticalLayout {
                 winner(heavy.key(), "+" + pct + "%"));
     }
 
-    /** Pace gap (effort per open day) between the densest and sparsest dated milestone. */
-    private Div paceDelta(UnitToggle.Unit unit) {
-        MilestoneVelocity dense = report.densest().orElse(null);
-        MilestoneVelocity sparse = report.sparsest().orElse(null);
-        if (dense == null || sparse == null || dense.secondsPerDay() == 0) {
-            return VelocityStyles.deltaTile("Pace", "n/a", muted("need two dated milestones"));
+    /** Effective-pace gap (effort per active day) between the fastest and slowest team. */
+    private Div effectivePaceDelta(UnitToggle.Unit unit) {
+        MilestoneVelocity fast = report.mostEffectivePace().orElse(null);
+        MilestoneVelocity slow = report.leastEffectivePace().orElse(null);
+        if (fast == null || fast.effectivePaceSeconds() == 0) {
+            return VelocityStyles.deltaTile("Effective pace", "n/a", muted("no active days"));
         }
-        String value = unit.formatPerDay(dense.secondsPerDay());
-        if (sparse.secondsPerDay() == 0 || dense.secondsPerDay() == sparse.secondsPerDay()) {
-            return VelocityStyles.deltaTile("Pace", value, winner(dense.key(), "densest"));
+        String value = unit.formatPerDay(fast.effectivePaceSeconds());
+        if (slow == null || slow.effectivePaceSeconds() == 0 || fast.key().equals(slow.key())) {
+            return VelocityStyles.deltaTile("Effective pace", value, winner(fast.key(), "fastest"));
         }
-        String ratio = ratio(dense.secondsPerDay(), sparse.secondsPerDay());
-        return VelocityStyles.deltaTile("Pace", value, winner(dense.key(), ratio + "× denser"));
+        String ratio = ratio(fast.effectivePaceSeconds(), slow.effectivePaceSeconds());
+        return VelocityStyles.deltaTile("Effective pace", value, winner(fast.key(), ratio + "× faster"));
+    }
+
+    /** Effort-throughput gap (effort per week) between the fastest-burning and slowest milestone. */
+    private Div throughputDelta(UnitToggle.Unit unit) {
+        MilestoneVelocity fast = report.mostThroughput().orElse(null);
+        MilestoneVelocity slow = report.leastThroughput().orElse(null);
+        if (fast == null || fast.effortThroughputSecondsPerWeek() == 0) {
+            return VelocityStyles.deltaTile("Throughput", "n/a", muted("need a dated window"));
+        }
+        String value = unit.format(fast.effortThroughputSecondsPerWeek()) + "/wk";
+        if (slow == null || slow.effortThroughputSecondsPerWeek() == 0 || fast.key().equals(slow.key())) {
+            return VelocityStyles.deltaTile("Throughput", value, winner(fast.key(), "fastest"));
+        }
+        String ratio = ratio(fast.effortThroughputSecondsPerWeek(), slow.effortThroughputSecondsPerWeek());
+        return VelocityStyles.deltaTile("Throughput", value, winner(fast.key(), ratio + "× more"));
     }
 
     /** Team-size gap: how many people worked on the biggest vs the smallest milestone team. */
@@ -334,35 +347,6 @@ public class VelocityView extends VerticalLayout {
         return diff == 0
                 ? VelocityStyles.deltaTile("Team size", value, muted("same team size"))
                 : VelocityStyles.deltaTile("Team size", value, winner(most.key(), "+" + diff + " people"));
-    }
-
-    /** Consumption: how much of its estimate the hungriest milestone burned, vs the leanest. */
-    private Div consumptionDelta() {
-        MilestoneVelocity most = report.mostConsumed().orElse(null);
-        MilestoneVelocity least = report.leastConsumed().orElse(null);
-        if (most == null) {
-            return VelocityStyles.deltaTile("Consumption", "n/a", muted("nothing estimated"));
-        }
-        String value = most.consumptionPct() + "%";
-        String phrase = least != null && !least.key().equals(most.key())
-                ? "vs " + least.consumptionPct() + "%"
-                : most.overBudget() ? "over budget" : "of estimate";
-        return VelocityStyles.deltaTile("Consumption", value, winner(most.key(), phrase));
-    }
-
-    /** Variance: the milestone that missed its estimate by the widest margin (over or under). */
-    private Div varianceDelta(UnitToggle.Unit unit) {
-        MilestoneVelocity worst = report.estimated().stream()
-                .max(Comparator.comparingLong(m -> Math.abs(m.varianceSeconds())))
-                .orElse(null);
-        if (worst == null) {
-            return VelocityStyles.deltaTile("Variance", "n/a", muted("nothing estimated"));
-        }
-        long variance = worst.varianceSeconds();
-        long pct = Math.round(Math.abs(variance) * 100.0 / worst.estimateSeconds());
-        String direction = variance > 0 ? "over" : variance < 0 ? "under" : "on";
-        String phrase = direction + " (" + (variance >= 0 ? "+" : "-") + pct + "%)";
-        return VelocityStyles.deltaTile("Variance", signed(variance, unit), winner(worst.key(), phrase));
     }
 
     /** Schedule slip: how far the latest-slipping milestone's delivery moved past its plan. */
@@ -500,15 +484,28 @@ public class VelocityView extends VerticalLayout {
             return new Div();
         }
 
+        int bucketDays = bucketWidthDays(milestones);
+        String window = bucketDays == 7 ? "week" : bucketDays + "-day window";
         Div section = new Div(
-                DashboardStyle.note("Effort logged per 10-day window since each milestone's start"),
-                new EffortTimelineChart(series, 10, unit::format));
+                DashboardStyle.note("Effort logged per " + window + " since each milestone's start"),
+                new EffortTimelineChart(series, bucketDays, unit::format));
         section.getStyle()
                 .set("margin-bottom", "16px")
                 .set("display", "flex")
                 .set("flex-direction", "column")
                 .set("gap", "6px");
         return section;
+    }
+
+    /** Bucket width in days, read off the spacing of any milestone's effort windows (else 7). */
+    private int bucketWidthDays(List<MilestoneVelocity> milestones) {
+        for (MilestoneVelocity milestone : milestones) {
+            List<EffortBucket> buckets = milestone.effortOverTime();
+            if (buckets.size() >= 2) {
+                return buckets.get(1).dayOffset() - buckets.get(0).dayOffset();
+            }
+        }
+        return 7;
     }
 
     /**
@@ -576,6 +573,11 @@ public class VelocityView extends VerticalLayout {
         addRow(table, "Estimate", milestones, m -> textCell(m.hasEstimate() ? unit.format(m.estimateSeconds()) : "n/a"), true);
         addRow(table, "Consumption", milestones, this::consumptionCell, true);
         addRow(table, "Variance", milestones, m -> varianceCell(m, unit), false);
+        addRow(table, "Active days", milestones, m -> textCell(m.hasActiveDays() ? m.activeDays() + " d" : "n/a"), true);
+        addRow(table, "Effort per active day", milestones,
+                m -> textCell(m.hasActiveDays() ? unit.formatPerDay(m.effectivePaceSeconds()) : "n/a"), false);
+        addRow(table, "Effort per week", milestones,
+                m -> textCell(m.hasDuration() ? unit.format(m.effortThroughputSecondsPerWeek()) + "/wk" : "n/a"), true);
         addRow(table, "Effort per day open", milestones, m -> textCell(unit.formatPerDay(m.secondsPerDay())), false);
         addRow(table, "Contributors", milestones, m -> textCell(String.valueOf(m.contributors())), true);
 

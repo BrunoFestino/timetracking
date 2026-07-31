@@ -91,26 +91,30 @@ public record VelocityReport(
         return milestones.stream().min(Comparator.comparingInt(MilestoneVelocity::contributors));
     }
 
-    // ── estimate / schedule extremes, for the comparison overview ──────────────
+    // ── velocity / schedule extremes, for the comparison overview ──────────────
 
-    /** Milestones carrying a planned-effort estimate — the ones consumption/variance come from. */
-    public List<MilestoneVelocity> estimated() {
-        return milestones.stream().filter(MilestoneVelocity::hasEstimate).toList();
+    /** Milestone that moved fastest per active day (highest effective pace). */
+    public Optional<MilestoneVelocity> mostEffectivePace() {
+        return milestones.stream()
+                .filter(MilestoneVelocity::hasActiveDays)
+                .max(Comparator.comparingLong(MilestoneVelocity::effectivePaceSeconds));
     }
 
-    /** Planned effort summed across the selection, in seconds. */
-    public long totalEstimateSeconds() {
-        return milestones.stream().mapToLong(MilestoneVelocity::estimateSeconds).sum();
+    /** Milestone that moved slowest per active day (lowest effective pace). */
+    public Optional<MilestoneVelocity> leastEffectivePace() {
+        return milestones.stream()
+                .filter(MilestoneVelocity::hasActiveDays)
+                .min(Comparator.comparingLong(MilestoneVelocity::effectivePaceSeconds));
     }
 
-    /** Milestone that consumed the largest share of its estimate (most over/least under budget). */
-    public Optional<MilestoneVelocity> mostConsumed() {
-        return estimated().stream().max(Comparator.comparingLong(MilestoneVelocity::consumptionPct));
+    /** Milestone burning the most effort per week over its window. */
+    public Optional<MilestoneVelocity> mostThroughput() {
+        return datable().stream().max(Comparator.comparingLong(MilestoneVelocity::effortThroughputSecondsPerWeek));
     }
 
-    /** Milestone that consumed the smallest share of its estimate. */
-    public Optional<MilestoneVelocity> leastConsumed() {
-        return estimated().stream().min(Comparator.comparingLong(MilestoneVelocity::consumptionPct));
+    /** Milestone burning the least effort per week over its window. */
+    public Optional<MilestoneVelocity> leastThroughput() {
+        return datable().stream().min(Comparator.comparingLong(MilestoneVelocity::effortThroughputSecondsPerWeek));
     }
 
     /** Milestone whose actual delivery slipped furthest past its planned date. */

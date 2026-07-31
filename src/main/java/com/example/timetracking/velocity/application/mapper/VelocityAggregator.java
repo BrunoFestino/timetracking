@@ -40,7 +40,7 @@ public class VelocityAggregator {
     private static final String UNKNOWN_AUTHOR = "Unknown";
 
     /** Width of each effort-over-time window, in days since the milestone start. */
-    private static final int BUCKET_DAYS = 10;
+    private static final int BUCKET_DAYS = 7;
 
     public VelocityReport aggregate(List<JiraTicket> milestoneTrees) {
         List<MilestoneVelocity> perMilestone = new ArrayList<>();
@@ -79,6 +79,7 @@ public class VelocityAggregator {
                     MilestoneDelivery.durationDays(start, delivery),
                     milestoneSeconds,
                     estimateSeconds(tree),
+                    (int) worklogDates(worklogs).distinct().count(),
                     effortBuckets(worklogs, start),
                     sortedByValueDesc(secondsByPerson)));
         }
@@ -95,19 +96,16 @@ public class VelocityAggregator {
     }
 
     /**
-     * Planned effort for the milestone's whole tree, in seconds. Prefers the up-front man-day
-     * estimate ({@code effortEstimateManDays}, rolled up); falls back to Jira's original time
-     * estimate when the custom field was never filled. {@code 0} when nothing was estimated.
+     * Planned effort for the milestone, in seconds — the same rule the milestone dashboard uses
+     * ({@code ProgressAggregator.budget}): the milestone's own up-front man-day estimate
+     * ({@code effortEstimateManDays}), else Jira's original time estimate rolled up over the tree.
+     * {@code 0} when nothing was estimated. The custom field on the milestone node already stands
+     * for the whole milestone, so it is <em>not</em> summed with the children's (that multi-counts).
      */
     private long estimateSeconds(JiraTicket tree) {
-        long fromManDays = Math.round(totalEffortManDays(tree) * TimeConstants.SECONDS_PER_MAN_DAY);
-        return fromManDays > 0 ? fromManDays : tree.totalOriginalEstimateSeconds();
-    }
-
-    /** Own up-front man-day estimate plus that of every descendant. */
-    private double totalEffortManDays(JiraTicket ticket) {
-        return ticket.effortEstimateManDays()
-                + ticket.children().stream().mapToDouble(this::totalEffortManDays).sum();
+        return tree.effortEstimateManDays() > 0
+                ? Math.round(tree.effortEstimateManDays() * TimeConstants.SECONDS_PER_MAN_DAY)
+                : Math.max(0, tree.totalOriginalEstimateSeconds());
     }
 
     /**

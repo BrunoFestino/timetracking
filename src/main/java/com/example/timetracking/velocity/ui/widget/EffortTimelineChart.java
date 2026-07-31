@@ -81,10 +81,17 @@ public class EffortTimelineChart extends Div {
                     .append("'>").append(esc(format.apply(Math.round(maxSeconds * frac)))).append("</text>");
         }
 
-        // x-axis day labels at start / mid / end
-        appendXLabel(svg, ML, "0d", "start");
-        appendXLabel(svg, ML + PLOT_W / 2, (maxDay / 2) + "d", "middle");
-        appendXLabel(svg, ML + PLOT_W, maxDay + "d", "end");
+        // x-axis: a vertical gridline + day label at each of ~8 evenly-spaced buckets
+        int lastBucket = Math.max(0, maxBuckets - 1);
+        int step = Math.max(1, (int) Math.ceil((lastBucket + 1) / 8.0));
+        for (int i = 0; i <= lastBucket; i += step) {
+            int x = (int) Math.round(ML + (lastBucket == 0 ? 0 : (double) i / lastBucket) * PLOT_W);
+            svg.append("<line x1='").append(x).append("' y1='").append(MT)
+                    .append("' x2='").append(x).append("' y2='").append(BASE_Y)
+                    .append("' stroke='").append(DashboardStyle.REMAINING).append("' stroke-width='1'/>");
+            String anchor = i == 0 ? "start" : "middle";
+            appendXLabel(svg, x, (i * bucketDays) + "d", anchor);
+        }
 
         for (Series s : series) {
             appendSeries(svg, s, denom, maxSeconds);

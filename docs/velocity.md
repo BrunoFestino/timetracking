@@ -35,8 +35,8 @@ El toggle **MD / Hours** de la toolbar cambia solo cómo se muestra el **esfuerz
 
 Qué muestra:
 
-- **Comparison overview**: una fila de **deltas** que resumen la comparativa entre los milestones — **Duration gap** (cuánto más rápido se entregó uno, con el factor "N× faster"), **Effort gap** (cuánto más esfuerzo costó, abs y %), **Consumption** (qué milestone quemó mayor porcentaje de su estimado, vs el más austero), **Variance** (el que más se desvió del estimado, MD con signo y %), **Pace** (el de mayor esfuerzo por día abierto, "N× denser"), **Schedule slip** (cuántos días se corrió la entrega respecto de la fecha planificada) y **Team size** (contribuidores de cada uno). El key del milestone "ganador" de cada delta va en **su color**. Con un solo milestone seleccionado, muestra un hint para agregar otro.
-- **Tab "Compare milestones"**: arriba, el gráfico héroe **Effort over time** — una **línea por milestone** con el esfuerzo logueado por ventana de 10 días desde el arranque de cada uno (alineados por días-desde-su-inicio, no por calendario, así dos corridas de épocas distintas se superponen), cada línea en el **color** de su milestone. Debajo, el **gráfico de barras** de días de cada milestone (con **línea punteada del promedio**) y una **tabla comparativa lado a lado**: una columna por milestone, y filas de métricas — duración (se resalta la más rápida), fechas de arranque/entrega, **fecha planificada** y **desvío de cronograma**, esfuerzo total, **estimado**, **consumo %** (rojo si pasó el estimado), **varianza** (rojo over / verde under), esfuerzo por día abierto y contribuidores — más un bloque de esfuerzo por persona (cada persona con lo que puso en cada milestone y su porcentaje, o "—" si no participó).
+- **Comparison overview**: una fila de **deltas** enfocados en velocidad del equipo — **Duration gap** (cuánto más rápido se entregó uno, "N× faster"), **Effort gap** (cuánto más esfuerzo costó, abs y %), **Effective pace** (esfuerzo por **día activo** del más veloz, "N× faster"), **Throughput** (esfuerzo por semana, "N× more"), **Schedule slip** (días que se corrió la entrega respecto de la fecha planificada) y **Team size** (contribuidores de cada uno). El key del milestone "ganador" de cada delta va en **su color**. Con un solo milestone seleccionado, muestra un hint para agregar otro.
+- **Tab "Compare milestones"**: arriba, el gráfico héroe **Effort over time** — una **línea por milestone** con el esfuerzo logueado por **semana** desde el arranque de cada uno (alineados por días-desde-su-inicio, no por calendario, así dos corridas de épocas distintas se superponen; eje X con etiquetas cada ~semana/dos semanas), cada línea en el **color** de su milestone. Debajo, el **gráfico de barras** de días de cada milestone (con **línea punteada del promedio**) y una **tabla comparativa lado a lado**: una columna por milestone, y filas de métricas — duración (se resalta la más rápida), fechas de arranque/entrega, **fecha planificada** y **desvío de cronograma**, esfuerzo total, **estimado**, **consumo %** (rojo si pasó el estimado), **varianza** (rojo over / verde under), **días activos**, **esfuerzo por día activo**, **esfuerzo por semana**, esfuerzo por día abierto y contribuidores — más un bloque de esfuerzo por persona (cada persona con lo que puso en cada milestone y su porcentaje, o "—" si no participó).
 - **Tab "Per person"**: una sección colapsable por persona, con un mini gráfico del reparto de su esfuerzo entre los milestones seleccionados y, al expandir, cuánto puso en cada milestone y **qué porcentaje del esfuerzo total del milestone** representó (cuánto de esa entrega cargó).
 
 El mismo milestone lleva **el mismo color** en el gráfico y en su columna de la tabla, para identificarlo de un vistazo.
@@ -46,7 +46,8 @@ El mismo milestone lleva **el mismo color** en el gráfico y en su columna de la
 - **La duración es tiempo de calendario, no esfuerzo.** Un milestone de 40 días puede haber tenido 5 días de trabajo real: los días incluyen fines de semana, esperas y pausas. Para el trabajo real está la fila de esfuerzo.
 - **Un milestone sin fechas de entrega no promedia.** Si no se puede establecer arranque o entrega, se muestra "n/a" y queda afuera del promedio (no cuenta como cero).
 - **Solo cuenta lo que se registra.** El esfuerzo depende de la disciplina de carga de worklogs en Jira; el tiempo de entrega no, porque sale de las fechas del milestone.
-- **Consumo y varianza necesitan estimado.** Salen del estimado en man-days (`effortEstimateManDays`, o el original estimate de Jira como fallback). Un milestone sin estimado muestra "n/a" en esas filas y tiles, no cero.
+- **Consumo y varianza necesitan estimado.** Salen del estimado en man-days del milestone (`effortEstimateManDays` del propio milestone, o el original estimate de Jira como fallback — la misma regla que el dashboard de milestone). Viven solo en la tabla; un milestone sin estimado muestra "n/a", no cero.
+- **Velocidad ≠ pace de calendario.** El **effective pace** es esfuerzo por **día activo** (día con worklog), así el tiempo muerto no lo baja como al "esfuerzo por día abierto" (calendario). El **throughput** es esfuerzo por semana sobre la ventana de entrega. Un milestone sin días activos o sin ventana fechada cae en "n/a".
 - **El desvío de cronograma necesita fecha planificada.** Sale de la baseline delivery date; sin ella, la fila/tile muestra "n/a". Positivo = se entregó tarde, negativo = adelantado.
 - **El gráfico de esfuerzo en el tiempo necesita fechas de worklog.** Cada barra/punto sale de la fecha de cada worklog; trabajo sin fecha parseable no entra en la curva (sí en los totales).
 - **Solo cuenta el trabajo dentro del árbol del milestone** (milestone → epics → issues → subtasks). Trabajo logueado fuera de esa jerarquía no aparece.
@@ -133,7 +134,7 @@ return (int) Math.round(datable.stream().mapToInt(MilestoneVelocity::durationDay
 public Optional<MilestoneVelocity> fastest()  { return datable().stream().min(byDuration); }
 public Optional<MilestoneVelocity> slowest()  { return datable().stream().max(byDuration); }
 // + heaviestByEffort/lightestByEffort, densest/sparsest (por secondsPerDay), most/fewestContributors
-// + mostConsumed/leastConsumed (por consumptionPct, solo estimated()), mostSlipped (por scheduleSlipDays)
+// + mostEffectivePace/leastEffectivePace (por effectivePaceSeconds), mostThroughput/leastThroughput, mostSlipped
 ```
 
 Son todos min/max/filtros O(n) sobre listas chicas. La vista arma los deltas con estos
@@ -144,22 +145,27 @@ El summary ya no promedia la selección: `avgSecondsPerMilestone`, `fastestDurat
 mediana, el rango y la puntualidad se quitaron en rondas previas (promediar dos milestones
 esconde la comparación; el on-time dependía de fechas planificadas que no siempre están).
 
-#### Estimado, consumo, varianza y esfuerzo en el tiempo — `VelocityAggregator`
+#### Velocidad, estimado y esfuerzo en el tiempo — `VelocityAggregator`
 
 El aggregator ya **no colapsa el árbol** a "segundos de worklog + primer/último worklog".
 Además, por milestone deriva (todo desde el árbol ya cargado, sin llamadas nuevas a Jira):
 
-- **`estimateSeconds`**: estimado planificado del árbol entero. Prefiere `effortEstimateManDays`
-  (rolleado por los descendientes, × `SECONDS_PER_MAN_DAY`); si nadie lo cargó, cae a
-  `totalOriginalEstimateSeconds()`. `0` = sin estimar → `hasEstimate()` false.
-- **`consumptionPct()`** = `spent / estimate` (%), **`varianceSeconds()`** = `spent − estimate`
-  (positivo = over budget), **`overBudget()`** — todos guardados por `hasEstimate()`.
+- **`activeDays`**: cantidad de días calendario distintos con worklog. Base de la velocidad real:
+  **`effectivePaceSeconds()`** = `spent / activeDays` (esfuerzo por día trabajado, ignora el idle,
+  a diferencia de `secondsPerDay()` que divide por días calendario) y
+  **`effortThroughputSecondsPerWeek()`** = `spent × 7 / durationDays` (esfuerzo por semana).
+- **`estimateSeconds`**: estimado del milestone con **la misma regla que `ProgressAggregator.budget`**
+  del dashboard de milestone — `effortEstimateManDays` **del propio nodo milestone** (× `SECONDS_PER_MAN_DAY`),
+  si es 0 cae a `totalOriginalEstimateSeconds()`. **No se suma el custom field de los hijos**: el del
+  milestone ya representa todo el milestone, sumarlos lo multi-contaba (bug corregido). `0` = sin
+  estimar → `hasEstimate()` false. Alimenta `consumptionPct()`/`varianceSeconds()`/`overBudget()`,
+  que viven solo en la tabla.
 - **`plannedDeliveryDate`** = baseline delivery date (planificada) del metadata;
   **`scheduleSlipDays()`** = `deliveryDate − plannedDeliveryDate` (positivo = tarde),
   guardado por `hasPlannedDelivery()`.
 - **`effortOverTime`**: lista densa de `EffortBucket(dayOffset, seconds)` — worklogs bucketeados
-  en ventanas de `BUCKET_DAYS = 10` desde `startDate`, rellenando ventanas vacías con cero. El
-  trabajo logueado antes del arranque se atribuye a la ventana 0 en vez de descartarse.
+  en ventanas de `BUCKET_DAYS = 7` (semanales) desde `startDate`, rellenando ventanas vacías con
+  cero. El trabajo logueado antes del arranque se atribuye a la ventana 0 en vez de descartarse.
 
 #### Cifras por persona — `PersonVelocity` + `PersonMilestoneEffort`
 
@@ -173,11 +179,12 @@ esfuerzo en el tiempo, que necesita geometría de líneas y ejes y por eso se ar
 - **`EffortTimelineChart`** (el gráfico héroe): construye un **string SVG** (líneas, ejes,
   gridlines) y lo renderiza como imagen vía `DashboardStyle.svgImage(svg, alt)` — el único
   camino a vectores reales en el feature, ya que no hay librería de charts. Una **polyline por
-  milestone** en su `colorFor`, alineadas por índice de bucket (= días desde el arranque de cada
-  milestone), escaladas al máximo global de esfuerzo por ventana; ejes Y (0/50/100% del máximo,
-  formateados en MD/h) y X (0d / mitad / último día). Al ser un `<img>` no tiene tooltips DOM, así
-  que lleva una **leyenda** (swatch + clave) en DOM real debajo. Un milestone sin worklogs fechados
-  no aporta serie; si ninguno tiene, la sección se omite.
+  milestone** en su `colorFor`, alineadas por índice de bucket (= semanas desde el arranque de cada
+  milestone), escaladas al máximo global de esfuerzo por ventana; eje Y (0/50/100% del máximo,
+  formateados en MD/h) y eje X con **gridline + etiqueta de día en ~8 buckets equiespaciados**
+  (`step = ceil(buckets / 8)`), para leer la cadencia semanal en milestones cortos y largos. Al ser
+  un `<img>` no tiene tooltips DOM, así que lleva una **leyenda** (swatch + clave) en DOM real
+  debajo. Un milestone sin worklogs fechados no aporta serie; si ninguno tiene, la sección se omite.
 - **`ComparisonBarChart`**: área de 140 px con una barra por milestone que escala dentro de 118 px (`BAR_AREA_PX`, deja lugar al valor arriba de cada barra). Cada `Column` lleva su **color** (el del milestone, vía `VelocityStyles.colorFor`); un color `null` cae al color por defecto. La escala usa `max(promedio, máximo de las columnas)` para que la línea de promedio siempre entre en el gráfico. La línea de referencia es solo el **promedio**: un `Div` absoluto con `border-top: 1px dashed` en `bottom = round(avg * 118 / max)` px, con su etiqueta ("avg N days") a la derecha. Una columna sin duración medible conserva su lugar con la etiqueta `n/a` y sin barra.
 - **Tabla comparativa** (`VelocityView.comparisonTable`): un CSS grid `minmax(150px,200px) repeat(N, minmax(150px,1fr))` dentro de un contenedor con `overflow-x: auto`. Header con una columna por milestone (borde superior en su color + clave + nombre); filas de métricas construidas con `addRow(...)` (una función `MilestoneVelocity → celda` por fila); la fila de duración resalta el más rápido en verde; el bloque "Effort per person" agrega una fila por persona con su esfuerzo y % en cada milestone. Todo desde el `VelocityReport` ya computado.
 - **`Sparkline`**: flexbox de barras finitas, altura porcentual sobre el máximo, tooltip por barra. En el tab "Per person" muestra el reparto del esfuerzo de esa persona entre los milestones seleccionados.
