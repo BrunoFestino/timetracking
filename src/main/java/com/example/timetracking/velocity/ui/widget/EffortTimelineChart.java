@@ -67,7 +67,9 @@ public class EffortTimelineChart extends Div {
         int maxDay = Math.max(0, maxBuckets - 1) * bucketDays;
 
         StringBuilder svg = new StringBuilder(2048);
-        svg.append("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ").append(W).append(' ').append(H)
+        svg.append("<svg xmlns='http://www.w3.org/2000/svg' width='").append(W)
+                .append("' height='").append(H)
+                .append("' viewBox='0 0 ").append(W).append(' ').append(H)
                 .append("' font-family='").append(DashboardStyle.SVG_FONT).append("'>");
 
         // horizontal gridlines + y-axis labels at 0 / 50% / 100%

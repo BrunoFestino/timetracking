@@ -367,10 +367,10 @@ public class VelocityView extends VerticalLayout {
         keySpan.getStyle().set("font-weight", "700").set("color", colorForKey(key));
 
         Span rest = new Span(" " + phrase);
-        rest.getStyle().set("color", DashboardStyle.MUTED);
+        rest.getStyle().set("color", DashboardStyle.INK).set("font-weight", "600");
 
         Span line = new Span(keySpan, rest);
-        line.getStyle().set("font-size", "12px").set("white-space", "nowrap")
+        line.getStyle().set("font-size", "13px").set("white-space", "nowrap")
                 .set("overflow", "hidden").set("text-overflow", "ellipsis");
         return line;
     }
@@ -378,7 +378,7 @@ public class VelocityView extends VerticalLayout {
     /** A plain muted qualifier line (no milestone named). */
     private Span muted(String text) {
         Span line = new Span(text);
-        line.getStyle().set("font-size", "12px").set("color", DashboardStyle.MUTED)
+        line.getStyle().set("font-size", "13px").set("color", DashboardStyle.MUTED)
                 .set("white-space", "nowrap").set("overflow", "hidden").set("text-overflow", "ellipsis");
         return line;
     }
