@@ -28,8 +28,8 @@ public class EffortTimelineChart extends Div {
     public record Series(String key, List<Long> bucketSeconds, String color) {
     }
 
-    private static final int W = 720;
-    private static final int H = 260;
+    private static final int W = 960;
+    private static final int H = 280;
     private static final int ML = 54;
     private static final int MR = 18;
     private static final int MT = 14;
@@ -55,8 +55,7 @@ public class EffortTimelineChart extends Div {
         Image chart = DashboardStyle.svgImage(
                 buildSvg(series, maxBuckets, Math.max(1L, maxSeconds), bucketDays, format),
                 "Effort logged per " + bucketDays + "-day window since start");
-        chart.getStyle().set("width", "100%").set("max-width", W + "px").set("height", "auto")
-                .set("display", "block");
+        chart.getStyle().set("width", "100%").set("height", "auto").set("display", "block");
 
         add(chart, legend(series));
     }
